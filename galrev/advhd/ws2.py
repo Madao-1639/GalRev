@@ -72,6 +72,68 @@ JUMP = re.compile(rb'\x07([A-Z0-9_]+)\x00')
 SIZE_SUFFIX = re.compile(r'[LSMWX]$')
 
 
+# --- file tail: plain (un-obfuscated) message / choice counts -------------
+#
+# The LAST 8 BYTES of a .ws2 member are a **plain** table,
+# `[u32 message count][u32 choice-entry count]` (counts of `0x14` instructions
+# and of `0f` entries). They are NOT part of the rot6-obfuscated code region:
+# read and write them straight from the raw member bytes. Running decode() over
+# the whole file rotates them into garbage -- that is why a disassembler shows
+# the trailing `ff` with two huge "operands"; those are not engine operands.
+#
+# The engine reads this table when loading a script (`data[size-8]` /
+# `data[size-4]`) and sizes the per-script "message read" bitmap (kept in the
+# save dir as `MessageFlag.dat`) as `(messages + choices + 7) / 8` bytes. The
+# bitmap write is NOT bounds-checked, so a tail table smaller than the script's
+# real message count makes the engine write past the bitmap -> heap corruption
+# (`0xc0000374`, probabilistic). Any edit changing `0x14` / `0f` counts must
+# rewrite this table -- in plain form, and AFTER encode().
+
+TAIL_LEN = 8
+
+
+def read_tail_counts(raw):
+    """Return (message_count, choice_entry_count) from a raw .ws2 member."""
+    if len(raw) < TAIL_LEN:
+        raise ValueError('ws2 too short for a tail table (%d bytes)' % len(raw))
+    return struct.unpack('<II', raw[-TAIL_LEN:])
+
+
+def tail_counts(decoded):
+    """Count (0x14 instructions, 0f entries) in a decoded stream.
+
+    Imports ws2disasm lazily (stdlib-only module, no cycle) so that callers who
+    already know the counts never pay for a disassembly.
+    """
+    from . import ws2disasm
+    messages = choices = 0
+    for ins in ws2disasm.disassemble(decoded):
+        if ins.opcode == 0x14:
+            messages += 1
+        elif ins.opcode == 0x0f:
+            choices += len(ins.fields.get('entries') or [])
+    return messages, choices
+
+
+def set_tail_counts(raw, counts=None, decoded=None):
+    """Rewrite the plain tail table; returns new bytes.
+
+    `counts` wins if given; otherwise the counts are counted from `decoded`, or
+    from `decode(raw)` when `decoded` is None. Call this **after** `encode()`
+    (writing before would rotate the values).
+    """
+    if counts is None:
+        counts = tail_counts(decode(raw) if decoded is None else decoded)
+    return raw[:-TAIL_LEN] + struct.pack('<II', int(counts[0]), int(counts[1]))
+
+
+def check_tail_counts(raw):
+    """(ok, expected, found) -- self-check for any script-editing tool."""
+    want = tail_counts(decode(raw))
+    got = read_tail_counts(raw)
+    return got == want, want, got
+
+
 def decode(raw):
     """Deobfuscate a .ws2 member (rotate left 6)."""
     return bytes(((c << 6) | (c >> 2)) & 0xff for c in raw)

@@ -38,5 +38,10 @@ AdvHD.exe 是 MoeNovel 的 Amaneko 系视觉小说引擎，WillPlus 新引擎，
 2. **对照 opcode**：用 `galrev.advhd.ws2disasm.disassemble` 线性反汇编，`data/ws2_operand_formats.json` 对照每条 opcode 的操作数格式；出现 UnknownInstruction 的 opcode 即是该作新出现的形态，按 [ws2-opcodes.md](ws2-opcodes.md) 的模态方法定边界。
 3. **Arc/PNA/LNG 工具直接用**：`galrev.advhd.arc`（归档读写与 null padding 规范化）、`galrev.advhd.pna`（分层图像解析/重序列化）、`galrev.advhd.lng`（文本容器编解码，**XOR 密钥从该作 `GameInfo.lua` 查**，观测值有 0x2C 与 0xCE 两种，不要照抄）。
 4. **确认本作标定值**：脚本名正则、资源前缀、存档目录名、PC 字段偏移、脚本标记字母（`%LC`/`%LF`/…）一律按本作语料重新标定——库里的默认值只是某作观测值，跨作需重验。
-5. **读脚本 VM**：需要逆向引擎时，先找明文的同引擎 exe 定位 handler 表（`obj+0x1B18` 附近）与操作数格式表，再回本作 exe（必要时脱壳）核对编号；方法与地址见 [engine-mechanics.md](engine-mechanics.md)。
-6. **方法论红线**：同引擎样本只用于提出假设，本作自身样本才用于定案；凡涉及字节增删的补丁，绝对偏移重定位与边界自检（[steam-achievements.md](steam-achievements.md) 的四条强不变式）不可省略。
+5. **末尾 8 字节尾表必须纳入校验**：脚本文件末尾 8 字节是**明文**的 `[u32 消息数][u32 选项条目数]`
+   （不参与 rot 混淆；见 [file-formats.md](file-formats.md)「末尾 8 字节」）。引擎据它给存档里的
+   「已读消息位图」分配容量 —— **任何改 `0x14`/`0f` 条数的补丁都必须同步重写它**，否则引擎写位越界，
+   表现为概率性 `0xc0000374`（细节与指纹见 [save-system.md](save-system.md)「MessageFlag.dat」）。
+   现成工具：`galrev.advhd.ws2.check_tail_counts()`（逐脚本自查）与 `set_tail_counts()`。
+6. **读脚本 VM**：需要逆向引擎时，先找明文的同引擎 exe 定位 handler 表（`obj+0x1B18` 附近）与操作数格式表，再回本作 exe（必要时脱壳）核对编号；方法与地址见 [engine-mechanics.md](engine-mechanics.md)。
+7. **方法论红线**：同引擎样本只用于提出假设，本作自身样本才用于定案；凡涉及字节增删的补丁，绝对偏移重定位与边界自检（[steam-achievements.md](steam-achievements.md) 的四条强不变式）不可省略。

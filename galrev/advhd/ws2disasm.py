@@ -727,13 +727,16 @@ def _op_67(data, pos, op_offset):
                    'v2': round(_f32(p, 8), 4), 'v3': round(_f32(p, 12), 4), 'raw': p.hex()}
 
 def _op_ff(data, pos, op_offset):
-    # ff <u32 a> <u32 b>   (END of script; a: 0=menu/title, 4/0xc4=title return,
-    #                       8=scene-jump load; b: 128 when script has choices)
+    # ff <8 bytes>   END of script. ⚠️ These 8 bytes are NOT operands: they are the
+    # **plain tail table** `[u32 message count][u32 choice-entry count]` (see
+    # docs/engines/advhd/file-formats.md「末尾 8 字节」). Reading them here shows
+    # them after the whole-file rot6 decode, i.e. rotated into meaningless values --
+    # do NOT interpret `a`/`b` semantically, and do NOT hard-code them.
     if pos + 8 > len(data):
         raise UnknownInstruction(op_offset, 0xff, 'truncated')
     a = _u32(data, pos)
     b = _u32(data, pos + 4)
-    return 9, data[pos:pos + 8], {'a': a, 'b': b}
+    return 9, data[pos:pos + 8], {'a': a, 'b': b, '_tail_table': True}
 
 def _op_c9(data, pos, op_offset):
     # c9 <layer NUL> <voice-char NUL> <6 bytes>  (voice/layer mapping)
