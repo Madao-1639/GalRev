@@ -20,13 +20,14 @@ AdvHD.exe 是 MoeNovel 的 Amaneko 系视觉小说引擎，WillPlus 新引擎，
 
 | 文档 | 内容 |
 |---|---|
-| [file-formats.md](file-formats.md) | Arc / WS2 / LNG / 定制 Lua 5.3 / NameTable.txt / PTF 字体格式 |
+| [file-formats.md](file-formats.md) | Arc / WS2 / LNG / 定制 Lua 5.3 / NameTable.txt / **PTF 字体**（容器格式 + 纯字面量 LZSS 打包） |
 | [ws2-opcodes.md](ws2-opcodes.md) | WS2 指令集：类型码、164 opcode 格式表、函数名对照、关键指令语义、字节模态结论 |
-| [engine-mechanics.md](engine-mechanics.md) | 脚本 VM 结构、LAYER_ORDER 槽位机制、ev 槽 7 字节限制、文本编码路径、语言包目录 |
+| [engine-mechanics.md](engine-mechanics.md) | 脚本 VM 结构、LAYER_ORDER 槽位机制、ev 槽 7 字节限制、**文字渲染路径（字体装载 + backlog 膨胀边）**、文本编码路径、语言包目录 |
 | [pna.md](pna.md) | PNA 分层图像二进制布局、layer_id 机制、写回不变量、图片比对口径 |
 | [save-system.md](save-system.md) | CCST 存档块结构、PC 字段、MessageFlag.dat、指定位置存档生成 |
 | [steam-achievements.md](steam-achievements.md) | Steam 成就机制与安全注入的工程要求 |
-| [localization.md](localization.md) | 汉化通路：lng 位置对应、NameTable、语音通道、字体、注入工程注意事项 |
+| [localization.md](localization.md) | 汉化通路：lng 位置对应、NameTable、语音通道、字体（PTF 自制 / 族名接线 / 简中 Charset）、注入工程注意事项 |
+| [branching-and-variants.md](branching-and-variants.md) | 条件分支与变体路由：变量存储（`0b` 布尔 / `09` 浮点）与 `01` 比较路径、**布尔旗标陷阱**、选项帧 / 跨脚本变量路由的字节模板与偏移纪律、自检与实机验收 |
 
 工具库：`galrev/advhd/`（Arc/WS2/PNA/LNG/Lua 5.3/存档的读写与反汇编，纯标准库）；引擎级数据表：`data/ws2_operand_formats.json`。
 

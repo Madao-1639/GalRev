@@ -14,13 +14,14 @@
 
 | 文档 | 内容 |
 |---|---|
-| [engines/advhd/file-formats.md](engines/advhd/file-formats.md) | Arc 归档、WS2 rot6、LNG 文本池、定制 Lua 5.3 字节码、NameTable.txt、PTF 字体 |
+| [engines/advhd/file-formats.md](engines/advhd/file-formats.md) | Arc 归档、WS2 rot6、LNG 文本池、定制 Lua 5.3 字节码、NameTable.txt、**PTF 字体**（容器格式 + 纯字面量 LZSS 打包） |
 | [engines/advhd/ws2-opcodes.md](engines/advhd/ws2-opcodes.md) | WS2 指令集：类型码表、164 opcode 格式表（指向 `data/ws2_operand_formats.json`）、关键指令逐条语义、字节模态结论 |
-| [engines/advhd/engine-mechanics.md](engines/advhd/engine-mechanics.md) | WS2 VM 结构、LAYER_ORDER 槽位机制、文本编码路径、语言包范式 |
+| [engines/advhd/engine-mechanics.md](engines/advhd/engine-mechanics.md) | WS2 VM 结构、LAYER_ORDER 槽位机制、ev 槽 7 字节限制、**文字渲染路径（字体装载 + backlog 膨胀边）**、文本编码路径、语言包范式 |
 | [engines/advhd/pna.md](engines/advhd/pna.md) | PNA 分层图像：二进制布局、layer_id 语义、写回硬不变量、帧池比对口径 |
 | [engines/advhd/save-system.md](engines/advhd/save-system.md) | CCST 存档快照链：文件布局、块内布局、PC 字段、MessageFlag.dat、指定位置存档生成 |
 | [engines/advhd/steam-achievements.md](engines/advhd/steam-achievements.md) | Steam 成就机制：CG 显示固有 id 对、`CG_ACHIEVEMENT` 调用注入、偏移重定位与不变式自检 |
-| [engines/advhd/localization.md](engines/advhd/localization.md) | 汉化通路：lng 位置对应等式、NameTable、官方简中注入范式、语音通道规则、字体替换 |
+| [engines/advhd/localization.md](engines/advhd/localization.md) | 汉化通路：lng 位置对应等式、NameTable、官方简中注入范式、语音通道规则、字体（PTF 自制 / 族名接线 / 简中 Charset） |
+| [engines/advhd/branching-and-variants.md](engines/advhd/branching-and-variants.md) | 条件分支与变体路由：`01`/`0b`/`09` 的存储与比较语义、**布尔旗标陷阱**、选项帧与跨脚本变量路由的字节模板、分段重定基、自检清单与实机验收纪律 |
 
 ## Willplus 旧引擎卷（WillAdv）
 
