@@ -55,6 +55,25 @@ LAYER_ORDER 是一个 `.ws2` 文件，但不是可执行剧情脚本，而是**�
 
 命名应用：事件 CG 必须用简短名（不能加占 4 字节的隔离前缀），原版新增 CG 用 9X 段位（`[路线]_9X[L/S]`）；立绘可任意长名并可加隔离前缀。**资源注册失败优先怀疑资源名**，用「换成普通新名」的 A/B 测试最快定性（比继续逆向二进制高效得多）。
 
+## 文字渲染路径：字体装载 + backlog 硬编码膨胀边
+
+### 字体装载
+
+脚本侧 `LegacyGame_utf8.lua` 定义 `g_fonts` / `g_fonts2` / `g_fonts3` 三组 `{name, file, CharSet}`，`file` 指向 `Fonts.arc` 内成员（槽名 `FOT-MatissePro-M/B.PTF` 之类，换字体只换槽内内容）。装载链：
+
+1. 按槽名从 `Fonts.arc` 读出 PTF blob；
+2. 解压（见 [file-formats.md](file-formats.md)「PTF 字体」：头 4 字节大小 + LZSS + XOR，ring 写指针从 1 起，窗内存密文）；
+3. `AddFontMemResourceEx` 注册到**进程字体表**；
+4. 之后 `add('system','Txt01'/'Name01', family, size, ...)` 走 GDI `CreateFontIndirectW` + `lfCharSet=GB2312_CHARSET` 按族名匹配（**族名匹配与系统字体无关**——字体自包含）。
+
+工具：`galrev.advhd.ptf`（编解码，xor_key 从该作 `GameInfo.lua` 查）。
+
+### backlog 图层的二次膨胀边（硬编码）
+
+创建 backlog 的文本图层时，某作字体/文本层装载字体（`sub_4986A0` @ `0x498918`/`0x4989DE`）**无条件执行** `mov dword ptr [esi+4],1`（info+4 = 1，硬编码、不走参数）——据此渲染管线把文字字形外侧先绘一层 **1px 膨胀边缘**，再把原字形叠上，形成**二次绘制**。
+
+该机制只影响字体管线，**不**变更内容；细笔画字体（日文明朝体系）在「1px 边缘叠加 + 原色叠合」下与背景「融」在一起产生肉眼可见的重影；笔画粗度足以使膨胀边缘与原字形对齐的字体（如思源黑体）在该层不再产生可见差异。**改字体**是不动引擎补丁的根治路线。
+
 ## 文本编码路径
 
 `AdvHD.exe` 内建 BIG5 / GB2312 / SHIFTJIS / UTF-8 四种代码页，并提供 Lua 侧转换绑定（`MyConv__lua_utf8tosjis` / `MyConv__lua_sjistoutf8` / `lua_utf8split` 等）。

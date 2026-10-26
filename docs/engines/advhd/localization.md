@@ -35,8 +35,17 @@
 
 ## 字体
 
-- PTF 字体封装（5 字节前缀 + XOR 0x2C 的 OpenType）未逆向完毕，**不要自制 PTF**——直接复用一份含目标字形集的 Fonts.arc 整体替换（中文字形集约为英文档的 2.4–2.6 倍），Lua 侧 `CharSet = GB2312_CHARSET` 是简体显示的关键。
-- 封装已知信息见 [file-formats.md](file-formats.md)「PTF 字体」。
+- PTF 容器内部（`[u32 大小][纯字面量 LZSS 混淆（XOR）流]`，XOR 密钥与 lng 同源，见 [file-formats.md](file-formats.md)「PTF 字体」）**可直接自制**——零 match 的 LZSS 与引擎解压端语义严格一致，零错排风险；但需跑**实机验证**（族名 + CharSet）。
+
+- **族名接线**（改 `Script.arc` 内 `LegacyGame_utf8.lua` 的 Lua 字节码常量）：`g_fonts`（正文/backlog/整页）、`g_fonts2`（菜单族名选择器）、`g_fonts3`（人名框）。**族名必须与字体内部 Windows family name（name 表 id1/4/16 中的任意一条）逐字一致**；族长度**不**允许「家族名+风格」合写。族名替换**写进 `Script.arc` 的 Lua 字节码**一次后即定稿；后续流水线只**复制**该归档（**不**重复提升替换层级）。
+
+- **字体格式**用 TrueType（magic `00 01 00 00`）而不是 CFF OpenType（`OTTO`）：GDI 的 `lfCharSet=GB2312_CHARSET` 过滤器对 CFF 匹配失败，TrueType 通路可正确匹配。
+
+- **简体显示通路**：`CharSet = GB2312_CHARSET` 是简体渲染的关键；用 TrueType 源 + 自备字体的组合可**完全自包含**运行（玩家零字体安装，不需依赖系统字体）。
+
+- **防字体渲染「重影」**：backlog 层创建函数**硬编码**给该图层开启二次膨胀边绘制（文字字形外侧先绘一层 1px 边界再叠原色）。细笔画字体（如日文明朝体）在背景下会"融"入背景产生肉眼可见的重影；笔画粗度足以使边缘膨胀后与原字形对齐的字体（如思源黑体）在该层不再产生可见差异。见 [engine-mechanics.md](engine-mechanics.md)「文字渲染路径」。
+
+工具：`galrev.advhd.ptf`（编码 / 解码）+ fontTools 子集化（字体源 TTF → 按需裁剪）。
 
 ## 注入工程注意事项
 

@@ -143,8 +143,25 @@ LNG 是 AdvHD 的文本替换机制，每个含文本的 `.ws2` 对应一个同�
 
 ## PTF 字体
 
-PTF 是引擎的字体容器（`Fonts.arc` 内 `.PTF` 成员）。
+PTF 是引擎的字体容器（`Fonts.arc` 内 `.PTF` 成员），内部 = `[u32 解压后大小][LZSS(xor 字节流)]`，解压输出再全量异或得字体本体（OpenType `OTTO` / TrueType `glyf` 均可）。
 
-- 已识别部分：对文件主体做逐字节 XOR 0x2C 后，偏移 5 处出现 OpenType/CFF 的 `OTTO` 签名，其后 `numTables`、`searchRange` 等与 OpenType 头部字段吻合，表目录区域可见 `BASE` / `CFF ` / `GPOS` / `GSUB` / `VORG` / `cmap` / `head` 等标准表标签。
-- 即 **PTF ≈ 5 字节自定义前缀 + XOR 0x2C 混淆的 OpenType 字体**；封装细节（前缀语义、表目录未完全对齐）**未逆向完毕，如实待考**。
-- 工程要点：字体替换可直接整体复用一份含目标字形集的 Fonts.arc（中文显示还需 Lua 侧 `CharSet = GB2312_CHARSET`），无需自制 PTF；如需自制，按上述封装思路打包 OpenType 后实机验证。详见 [localization.md](localization.md)「字体」。
+格式（反汇编 + 实机验证，格式对 header `sub_4591E0` 观测）：
+
+- 文件前 4 字节 = 解压后大小（LE u32），后接 LZSS 字节流：
+  - flag 字节按 **bit0 先出** 消费 8 位；bit=1 → 1 字节 literal；
+    bit=0 → 2 字节 match token：距离源 = `(b1>>4) + 16*b0`（12-bit 环形窗 0x1000），
+    长度 = `(b1 & 0xF) + 2`；
+  - **环形窗内存的是 XOR 后的字节**；写指针**从 1 起**（明文样本 `0x4593CD`: mov esi,1，跨作需重验）；
+- 解压输出逐字节与 xor_key 异或得到标准 OpenType / TrueType 字体文件；
+- 引擎随后 `AddFontMemResourceEx` 注册到**进程字体表**，经 `CreateFontIndirectW` +
+  `lfCharSet=GB2312_CHARSET` 按 Lua 传入的族名匹配（族名匹配**不走向系统字体表**）。
+
+**XOR 密钥与 lng 同源**（该作 `GameInfo.lua`，见 「LNG 文本容器」），观测值见同上。**拿到新游戏先查 GameInfo.lua**。
+
+**工程要点**：
+1. 字体文件熵高，LZSS 压缩对它无实际收益（原版某作 M 位 15.6 MiB 明文打出 17.6 MiB PTF，同样膨胀）；通用压缩包装器无收益；match token 的环形坐标是错误高发点。因此本仓库打包器只生成**纯字面量 LZSS**（flag=0xFF、每 8 字节前 1 flag、零 match）：膨胀固定 ~12.5%，与解压端语义严格一致，零错排风险。
+2. **字体格式**用 TrueType（magic `00 01 00 00`）而不是 CFF OpenType（`OTTO`）：GDI 的 `CreateFontIndirectW` 在 `CharSet=GB2312_CHARSET` 下对 CFF 匹配失败，TrueType 通路可正确匹配。
+3. **族名查找在本进程内** —— 换字体后，Lua 侧 `g_fonts.name` 等族名与字体内部族名**逐字一致**才会被匹配；不必给玩家装系统字体。
+4. 字体族群 name（Windows family）匹配不合并 style：厂商对 Bold 等字重典型的 Windows 家族名是**无后缀** (family) + **独立 style**；引擎侧按族名请求，若**需要**把 Bold 作为一个家族名字来匹配，应把 Bold 字重的 name 表 id1/4/16 重写为带 suffix 的族名（fontTools `name` 表 API）。
+
+工具：`galrev.advhd.ptf`（` lzss_decode` / `lzss_encode_literal` / `pack_ptf` / `unpack_ptf`，**xor_key 为必填参数**）。
