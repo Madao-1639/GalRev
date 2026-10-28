@@ -32,6 +32,17 @@
 | [engines/willplus/file-formats.md](engines/willplus/file-formats.md) | 老式归档（21 字节定长条目）、WSC 文件结构、ror2 混淆、脚本路由机制 |
 | [engines/willplus/wsc-opcodes.md](engines/willplus/wsc-opcodes.md) | WillAdv VM 两级查表分发、图形指令逐字节参数、256 项 handler 全表（指向 `data/wsc_handlers.json`） |
 
+## krkr 引擎卷（KiriKiri Z + M2「MDF」脚本）
+
+入口：[engines/krkr/README.md](engines/krkr/README.md)（引擎概述 + 新项目快速通道 + 跨作需重验清单）。
+
+| 文档 | 内容 |
+|---|---|
+| [engines/krkr/file-formats.md](engines/krkr/file-formats.md) | 判型速查、普通 xp3 / **Hxv4 加密变体**容器、`.scn` 两种外壳、PSB v3（头部/值类型/名字字典树/字符串池/重写策略）、TJS binary Variant |
+| [engines/krkr/script-text.md](engines/krkr/script-text.md) | MDF 文本模型：场景键、对白 5 元、分页 3/5 元、**`length` 两派口径**、行内标记、回写不变量、跨版本对齐键 |
+| [engines/krkr/hxv4-crypto.md](engines/krkr/hxv4-crypto.md) | 映射表帧与记录（`packed` 低位 = 条目下标）、**DJB 布局 AEAD**、DRIP VM 与四层 XOR 过滤器、参数清单与获取流程、判据与不变量 |
+| [engines/krkr/engine-mechanics.md](engines/krkr/engine-mechanics.md) | 引擎身份/指纹、执行层分工、**归档注册顺序与明文 xp3 覆盖**、语言域、字体重定向、移植操作顺序 |
+
 ## 跨引擎卷（Willplus → AdvHD）
 
 | 文档 | 内容 |
@@ -41,7 +52,7 @@
 
 ## 配套代码与数据
 
-- `galrev/advhd/`、`galrev/willplus/`、`galrev/convert/`：与上述文档一一对应的通用库（纯标准库，游戏专属标定值全部为调用方参数）。
+- `galrev/advhd/`、`galrev/willplus/`、`galrev/krkr/`、`galrev/convert/`：与上述文档一一对应的通用库（纯标准库，游戏专属标定值全部为调用方参数）。
 - `data/ws2_operand_formats.json`：AdvHD WS2 全部 164 个 opcode 的操作数格式表。
 - `data/wsc_handlers.json`：Willplus WillAdv VM 全部 256 项 opcode handler 表。
 
@@ -49,4 +60,5 @@
 
 - **新遇到一台 AdvHD 引擎游戏**：advhd/README → methodology → file-formats → ws2-opcodes，随后按需（图像走 pna，存档走 save-system，汉化走 localization，成就走 steam-achievements）。
 - **把原版内容移植到 AdvHD Steam 版**：先各自读完两个引擎卷的 README 与 file-formats，再读 cross-engine/wsc-to-ws2，转换器直接用 `galrev/convert/wsc2ws2.py`。
+- **新遇到一台 krkr（KiriKiri Z + MDF 脚本）游戏**：krkr/README → methodology → file-formats → script-text；归档加密走 hxv4-crypto，补丁形态与语言域走 engine-mechanics。
 - **只想解包看内容**：methodology → 对应引擎卷 file-formats，配 `galrev` 对应子包即可。
