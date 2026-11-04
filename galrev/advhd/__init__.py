@@ -9,6 +9,9 @@
 - pna:        PNAP 分层图像读写（解析/重序列化往返、图层操作、签名扫描回退）
 - lng:        LNG 文本容器编解码（UTF-16LE + 逐字节 XOR，密钥由调用方传入）
 - ptf:        Fonts.arc 字体容器编解码（头 4 字节大小 + LZSS，环形窗写指针 1 起 + XOR；打包端纯字面量）
+- ttfnames:   TTF/OTF `name` 表最小读取（族名核对：Lua 请求名 vs 字体内部名）
+- langpack:   语言包（≥1.9）：注册表选择（值名=安装路径的 ANSI 转换）、包发现、按成员覆盖视图
+- langdll:    语言包 DLL（`AdvHDLang.dll`）：资源树重建（windres）、32 位编译、`LoadStringW` 校验
 - luac53:     定制 Lua 5.3 字节码 undump（字符串长度 1 字节、opcode 索引 9 多一项）
 - luadis53:   定制 Lua 5.3 反汇编器（fields / Dis / dump）
 - saveadv:    CCST 存档快照链只读解析（块结构、字符串扫描、环序）

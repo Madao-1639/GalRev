@@ -8,8 +8,8 @@ AdvHD.exe 是 MoeNovel 的 Amaneko 系视觉小说引擎，WillPlus 新引擎，
 - 脚本系统：WS2 二进制脚本，逐字节 rot6 混淆（见 [file-formats.md](file-formats.md) 与 [ws2-opcodes.md](ws2-opcodes.md)）。
 - 脚本绑定：Lua 5.3（`lua5.3.dll`），系统界面与游戏主逻辑由 `Script.arc` 内的定制 Lua 5.3 字节码承载。
 - 表情驱动：E-mote 系统（`emotedriver.dll`，导出 `CEmoteLayer` / `face_talk` / `DISABLETALK` 等符号）。
-- 文本编码：内建 BIG5 / GB2312 / SHIFTJIS / UTF-8 四种代码页；脚本内窄字节按 CP932 解码、Lua 层用 UTF-8（见 [engine-mechanics.md](engine-mechanics.md)「文本编码路径」）。
-- 语言包机制：`AdvHDLang.dll` + 语言子目录（官方简中为 `zh-CN/`，见 [engine-mechanics.md](engine-mechanics.md)「语言包目录」与 [localization.md](localization.md)）。
+- 文本编码：字符集常量层有 BIG5 / GB2312 / SHIFTJIS / UTF-8，但**脚本内窄字节解码写死 CP932**（窄→宽只见 `932` 与 `65001`），Lua 层用 UTF-8（见 [engine-mechanics.md](engine-mechanics.md)「文本编码路径」）。
+- 语言包机制：`AdvHDLang.dll` + 语言子目录（官方简中为 `zh-CN/`）；选择/激活/Lua 开关与 DLL 载体见 [engine-mechanics.md](engine-mechanics.md)「语言包（≥1.9）」与 [localization.md](localization.md)。
 - 资源系统：自定义 Arc 归档（UTF-16LE 成员名）+ PNA 分层图像 + LNG 文本替换容器。
 - 存档系统：CCST 快照链（见 [save-system.md](save-system.md)）。
 - Steam 成就：编译器在 CG 显示的固有 id 对之后追加一条 `CG_ACHIEVEMENT` 调用（见 [steam-achievements.md](steam-achievements.md)）。
@@ -22,11 +22,11 @@ AdvHD.exe 是 MoeNovel 的 Amaneko 系视觉小说引擎，WillPlus 新引擎，
 |---|---|
 | [file-formats.md](file-formats.md) | Arc / WS2 / LNG / 定制 Lua 5.3 / NameTable.txt / **PTF 字体**（容器格式 + 纯字面量 LZSS 打包） |
 | [ws2-opcodes.md](ws2-opcodes.md) | WS2 指令集：类型码、164 opcode 格式表、函数名对照、关键指令语义、字节模态结论 |
-| [engine-mechanics.md](engine-mechanics.md) | 脚本 VM 结构、LAYER_ORDER 槽位机制、ev 槽 7 字节限制、**文字渲染路径（字体装载 + backlog 膨胀边）**、文本编码路径、语言包目录 |
+| [engine-mechanics.md](engine-mechanics.md) | 脚本 VM 结构、LAYER_ORDER 槽位机制、ev 槽 7 字节限制、**文字渲染路径（字体装载 + backlog 膨胀边）**、文本编码路径、**语言包（目录 / 按成员覆盖 / 注册表选择 / Lua 开关 / DLL 载体）** |
 | [pna.md](pna.md) | PNA 分层图像二进制布局、layer_id 机制、写回不变量、图片比对口径 |
 | [save-system.md](save-system.md) | CCST 存档块结构、PC 字段、MessageFlag.dat、指定位置存档生成 |
 | [steam-achievements.md](steam-achievements.md) | Steam 成就机制与安全注入的工程要求 |
-| [localization.md](localization.md) | 汉化通路：lng 位置对应、NameTable、语音通道、字体（PTF 自制 / 族名接线 / 简中 Charset）、注入工程注意事项 |
+| [localization.md](localization.md) | 汉化通路：lng 位置对应、NameTable、语音通道、字体（PTF 自制 / 族名接线 / 简中 Charset）、注入工程注意事项、**不走 lng 的文本（码页 hook / opcode 位置门）** |
 | [branching-and-variants.md](branching-and-variants.md) | 条件分支与变体路由：变量存储（`0b` 布尔 / `09` 浮点）与 `01` 比较路径、**布尔旗标陷阱**、选项帧 / 跨脚本变量路由的字节模板与偏移纪律、自检与实机验收 |
 
 工具库：`galrev/advhd/`（Arc/WS2/PNA/LNG/Lua 5.3/存档的读写与反汇编，纯标准库）；引擎级数据表：`data/ws2_operand_formats.json`。

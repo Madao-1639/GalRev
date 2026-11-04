@@ -100,6 +100,7 @@ LNG 是 AdvHD 的文本替换机制，每个含文本的 `.ws2` 对应一个同�
 - **XOR 密钥是逐作标定值，不是引擎常量**：密钥来自该游戏 `GameInfo.lua`（读档路径上引擎从 `getHostInfo` 的数字字段取一字节）。实测观测值：CROSS†CHANNEL 语料为 `0x2C`，A Sky Full of Stars 语料为 `0xCE`；新游戏必须从 `GameInfo.lua` 确认。
 - 终端控制标记（`%K`/`%P`/`%N` 等）以普通文本形式随条目携带。
 - 引擎按**播放位置**替换文本（无 id 字段），位置对应严格等式与汉化通路见 [localization.md](localization.md)。
+- **lng 必须与原 ws2 同载归档**：引擎按"同名归档"找 `.lng`（原脚本在 `RIO1` 就进 `RIO1`），放错归档读不到；语言包覆盖时同理，包内归档名要与根目录一致。
 - 工具：`galrev.advhd.lng`（`parse_lng` / `encode_lng`，密钥为必填参数）。
 
 ## 定制 Lua 5.3 字节码

@@ -6,7 +6,7 @@
 
 | 来源项目 | 涉及引擎 | 主要贡献 |
 |---|---|---|
-| CROSS†CHANNEL Steam 版还原补丁 | Willplus（原版）、AdvHD（Steam 版） | 两代引擎的指令集与文件格式、WSC→WS2 忠实转换、AdvHD 存档机制（CCST） |
+| CROSS†CHANNEL Steam 版还原补丁 | Willplus（原版）、AdvHD（Steam 版） | 两代引擎的指令集与文件格式、WSC→WS2 忠实转换、AdvHD 存档机制（CCST）、**语言包选择机制与码页 hook（不走 lng 的内联文本）** |
 | A Sky Full of Stars 内容还原补丁 | AdvHD（原版与 Steam 版） | Steam 成就机制、WS2 字节模态分析、PNA 图层机制 |
 
 ## 目录结构

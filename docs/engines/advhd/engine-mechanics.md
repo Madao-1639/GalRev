@@ -79,12 +79,13 @@ LAYER_ORDER 是一个 `.ws2` 文件，但不是可执行剧情脚本，而是**�
 `AdvHD.exe` 内建 BIG5 / GB2312 / SHIFTJIS / UTF-8 四种代码页，并提供 Lua 侧转换绑定（`MyConv__lua_utf8tosjis` / `MyConv__lua_sjistoutf8` / `lua_utf8split` 等）。
 
 - 引擎内部对**脚本内窄字节文本按 CP932 解码**：对明文样本统计 `MultiByteToWideChar` 调用点的代码页参数，CP932 占绝对多数（40 处，UTF-8 仅 2 处）。
+- 更严格的实测（两部作品的全 `.text` 扫描 + 运行时确认）：窄→宽的裸码页**只有 `932` 与 `65001` 两个值**，**没有 `936`/`950` 立即数**，且唯一入口把 `932` 写死在调用点、`setlocale` 也固定 `Japanese_Japan.932` ⇒ "内建四种代码页"只是 Lua/字体层的字符集常量，**不是**文本解码可选项；需要 UTF-8 内联文本时只能从 API 层改（做法见 [localization.md](localization.md)「不走 lng 的文本：码页 hook」）。
 - **Lua 字符串层是 UTF-8**：`LegacyGame_utf8.lua` 里的非 ASCII 字符串就是 UTF-8 编码且直接传给引擎 API。
 - 反方向 `WideCharToMultiByte` 以 UTF-8 为主——那是输出方向（交给 Lua / Steam API）。
 
 **结论**：脚本内窄字节（如 `%LC` 这类标记与其后的名字）受 CP932 限制，简体专用字写不进去；**文本汉化必须走宽字符通路**——正文/选项走 `.lng`（UTF-16LE），人名走 `NameTable.txt`（UTF-16LE），剧本 ws2 字节不动。这也是官方简中的做法（见 [localization.md](localization.md)）。
 
-## 语言包目录范式
+## 语言包（≥1.9）：目录、选择与激活
 
 引擎支持语言包：`AdvHDLang.dll`（语言桩，内含设置界面的本地化字符串与语言列表）加语言子目录。官方简中的目录结构：
 
@@ -98,10 +99,39 @@ LAYER_ORDER 是一个 `.ws2` 文件，但不是可执行剧情脚本，而是**�
     └── SysGraphic.arc     # 系统界面图（如有汉化）
 ```
 
-- 中文剧本**没有 ws2**：剧本仍用原 ws2，中文全部经 `.lng`（正文/选项）与 `NameTable.txt`（人名）注入。
-- `ui_language.lua` 是语言开关，官方实现恒为两个函数：`getLangPatchFlag()` 置 `PatchFlag = true`，`setInitLang()` 置 `g_altLanguage = true`。
-- 无语言子目录的游戏，把 `NameTable.txt` 与 `.lng` 放进主 `Rio.arc` 也可行，但是否完全等效需实机验证。
-- 语言开关 Lua 的字节码是定制 Lua 5.3（见 [file-formats.md](file-formats.md)「定制 Lua 5.3 字节码」）。
+**识别与按成员覆盖**
+
+- 判据是「子目录里存在 `AdvHDLang.dll`」（`PathFileExistsW`）；目录名即语言标识，标准 locale 名（如 `zh-CN`）会映射成系统显示名，其它名字原样显示。
+- 引擎读某归档时**优先取包内同名成员**，缺失的成员回落根目录（实测：包内 `Rio.arc` 只放 1 个成员也能生效）⇒ 语言包只装**差异成员**即可；包内归档**必须与根目录同名**（主剧本归档若叫 `RIO1`，包里也要叫 `RIO1`）。
+- `Script.arc` 同样按成员覆盖，所以包里放改动过的 Lua 即可（官方简中只放 1 个 `ui_language.lua`）。
+- 中文剧本**没有 ws2**：剧本仍用原 ws2，中文全部经 `.lng`（正文/选项）与 `NameTable.txt`（人名）注入。无语言子目录的游戏，把它们放进主 `Rio.arc` 也可行，但是否完全等效需实机验证。
+
+**选择语言：注册表**
+
+- 所选语言存 `HKCU\Software\WillPlus\AdvHD\LanguageSettings`，**值名 = 游戏安装路径**，值 = 语言目录名。
+- 值名是**安装路径经系统 ANSI 代码页转换**的结果：非当前 ACP 的字符变 `?`（`†` 在 GBK 系统上就是 `?`）。写这条注册表必须复刻同一规则，否则引擎读不到。
+- **值为空 = 默认（英文）**，语言包整体不生效；没有任何语言包时，启动设置界面把默认语言显示为 English（即使原版是日文）。放好语言包后设置界面才出现语言下拉。
+
+**激活：Lua 侧开关**
+
+引擎**不按名调用**这些符号（exe 里没有对应字符串），它们由 `Script.arc` 里的 Lua 互相消费：
+
+| 符号 | 作用 |
+|---|---|
+| `ui_language.lua`（放在语言包内，原游戏同名文件不要改） | 语言开关的定义处 |
+| `getLangPatchFlag()` | 决定多语言特性是否启用、用哪套字体/文件：`1`=繁中、`2`=日文（多数原版默认）、`3`=简中、`0`=不启用；个别官中返回 `true`（下游全是 Lua 真值判断）。字体没生效时先查它 |
+| `setInitLang()` | 置 `g_altLanguage = true`；`getAltLanguage()` 返回它，`getFontName()` 据此选 `g_fonts2` 槽（见 [localization.md](localization.md)「字体」） |
+| `GameInfo.lua` 的 `getEnglishTitle()` | 引擎**按名调用**取语言无关标题；缺失则退回原名 |
+| `LegacyGame.lua` 的 `g_SetDefaultLangJP` | **旧版**总开关：为 `true` 时多语言不激活（需改 `false`）；新版已移除该变量 |
+| `Sys_c_*` / `Sys_*` 资源前缀 | **旧版/部分官中**在中文模式下请求带前缀的资源（包里需有同名 pna，或在 Lua 里统一前缀）；新版无此约定，走同名图层覆盖 |
+
+引擎**能读未编译的 Lua**（可直接把明文 `.lua` 塞进 `Script.arc`）；语言开关 Lua 的字节码是定制 Lua 5.3（见 [file-formats.md](file-formats.md)「定制 Lua 5.3 字节码」）。
+
+**`AdvHDLang.dll` 是什么**
+
+- **纯资源 PE32**（i386、无导出、只有 `.rsrc`）：`RT_STRING` 若干条（设置界面与语言名的英/日两套）+ manifest；引擎 `LoadLibraryW` 加载它、用 `FindResourceW`/`LoadStringW` 读字符串。
+- 替换/自造时**资源树必须由资源编译器重建**（`windres` 编 `.rc` 再链接）。手工把原 `.rsrc` 节搬到别的 RVA 会让节内偏移失效，`LoadStringW` 直接访问违例 —— 外在表现是**设置界面文字全空**，而 DLL "看起来"能加载。重建后须用 `LoadStringW` 逐条与原件比对。
+- 这张 DLL **只在选中该语言时加载**，所以挂在它里面的代码（如码页 hook）天然是"语言包作用域"；工具见 `galrev.advhd.langdll`（重建资源 + 编译 + 校验）与 `galrev.advhd.langpack`（注册表/包发现/按成员合并视图）。
 
 ## 逆向与实测的经验
 
