@@ -28,6 +28,32 @@
 - 系统脚本（`startup.tjs`、`*.tjs`、`*.ks`）是**明文 UTF-16LE 源码**，UI 文案与字体映射都在这里，
   需要做界面汉化时从这里入手。
 
+### 2.1 读编译后的 TJS（TJS2100 字节码）
+
+发行版的启动脚本常是**编译产物**而不是源码，此时只能反汇编。容器与关键编码：
+
+```
+"TJS2100\0" + u32 总长
+  "DATA" + u32 size + 常量池
+  "OBJS" + u32 size + 对象（每个"脚本块/函数"一个）
+```
+
+* `DATA` 常量池按 `byte/short/int/int64/real` 五个池（各有 u32 count，末尾对齐 4）+ 字符串池（`u32 count`，每条 `u32 字符数 + UTF-16LE`，对齐 4）。
+* `OBJS` 里每个对象：`"TJS2" + u32 size`，随后 `parent / nameIdx / ctxType / 各计数 / 源位置表 / codeCount + code[] / varCount + variants[] / 父类 getter 表 / 属性表`。
+* **code 是 u16 字数组**（不是 u32）：每条指令的高低 16 位分别是 **opcode 与操作数**；
+  操作数个数按 opcode 查表（常见：单字指令 1 个、`VM_CONST`/`VM_GPD` 3~4 个、`VM_CALL*` 随 argc 变长）。
+* `variants` 是 `(int16 type, int16 idx)`：**`type == 3` 时 `idx` 就是字符串池下标**
+  （用于局部槽名/标识符）；`type == 2` 也常见为字符串，按实际包核对。
+* 成员名（`VM_GPD/VM_CALLD` 的操作数）落在**对象的名字/属性表**，不是常量池；读不到时
+  只能用调用形态（参数序列、相邻常量）反推。
+
+opcode 枚举见 krkr2 源码 `tjs2/tjsInterCodeGen.h`（`VM_NOP` 起；`TJS_NORMAL_AND_PROPERTY_ACCESSER(x)`
+会展开成 `x / xPD / xPI / xP` 四连）。指令长度规则可参照 YuaExtract 的
+`CxdecAntiMalform/tjs_patcher.cpp::InstructionSize`。
+
+> ⚠️ `@if (XXXX)` 是**编译期**指令：release 版会把整块剔除。依赖 DEBUG 分支的脚本/钩子
+> 在正式版里不存在 —— 反汇编时看到常量而没有对应代码，多半就是这个原因。
+
 ## 3. 归档加载与覆盖
 
 ### 3.1 启动链
@@ -64,15 +90,113 @@ exe
 - 请求名与 autopath 目录在查索引前会**小写化**（`system/Initialize.tjs` 能命中归档里的 `initialize.tjs` 即为此）。**【跨作需重验】**小写化究竟发生在存储层还是加密层尚未分离验证。
 - 解析方式：autopath 前缀与请求名拼成相对路径，再按「**目录部分 = 域、文件名部分 = 条目**」去归档索引里查（域的含义见 §4）。
 
-### 3.4 补丁怎么压过同一路径的官方条目
+### 3.4 补丁生效 SOP（决策树）
 
-- **明文 xp3 可被直接读取**：按真名打进普通（未加密）xp3、放进游戏目录即可被读到（发行版样本中基础归档本身就是明文）。是否必须与官方同为加密变体取决于加载器判定方式，**以实测为准**。**【跨作需重验】**
-- `*.sig` 是 RSA-PSS 签名，只做完整性校验：**不改已签名原包、只新增未签名包**即可规避风险，也便于用「Steam 校验文件完整性」还原。
-- 唯有当提供者注册得**更晚**时（典型是语言段落里的 `<arc>><lang>/scn/`），启动期注册的新归档压不住它。通用手段只有两条：
-  1. **重建持有目标文件的那个归档**：逻辑最简单，代价是体积；
-  2. **把注册推迟到启动末期**：挑一个「其自身提供者的优先级不高于你的归档、且执行时机在全部注册之后」的脚本文件作载体，在其末尾追加 `addAutoPath(...)`，让你的路径成为最后一次注册。载体文件的挑选与钩子形式是**逐作**问题（受该作启动脚本、语言选择时机、追加包配置影响），不要照搬。
-- 注册优先用**带目录前缀**的形态（`<arc>><lang>/scn/`）：只影响该命名空间。用归档根（`<arc>>`）会插手**所有裸名解析**（配置、存档、素材名都要先查一遍），风险面大得多。
+**先找「引擎会自己注册的合法归档名」，再在合法名里找「同名冲突时优先级最高」的那个；
+两者都不满足时，才用「高优先级归档做 TJS hook 注入」，最后才考虑 DLL 注入。**
 
+顺序的理由：越靠前，对原生文件改动越小、越容易回滚、越不容易与其它补丁冲突。
+
+```
+① 枚举合法名 ──找到？──否──> ④ 无合法名可用
+     │是                       1) hook 注入（需外部注入点）
+② 测优先级 ──能覆盖目标？──是──> 完成：补丁 = 该名字的归档
+     │否                       2) DLL 注入（hook TVPCreateStream）
+③ 借高优先级归档做 hook 注入 ──有载体？──是──> 完成
+     │否 ──> ④
+```
+
+#### ① 枚举合法名（最优先事项）
+
+合法名只有三处来源：
+
+| 来源 | 查法 |
+|---|---|
+| **exe 硬编码** | 静态分析脱壳 exe 的初始化代码/字符串（常见 `data.xp3`） |
+| **启动脚本（TJS）** | 解包 `system/Initialize.tjs`（常是字节码，见下）、发行方定制脚本（如 `main/Storages.tjs` 一类）。常见 API：`addArchive(name)`、`addTools(name)`、`useArchiveIfExists("xxx.xp3")`、`AppendDataConfig` |
+| **配置项** | `AppendDataConfig`（append 包，**只认配置里登记的项**）、`setupSubFolders`（**只注册目录，不注册 xp3**） |
+
+`addArchive(name)` 的实现（官方 `Initialize.tjs`）值得记住：
+
+```tjs
+function addArchive(name) {
+    Storages.addAutoPath(name + "/");            // 注册**目录**
+    return useArchiveIfExists(name);             // 有 name.xp3 才注册归档
+}
+function useArchiveIfExists(name) {
+    with (Storages) name = .chopStorageExt(.extractStorageName(name));
+    var arcname = System.exePath + name + ".xp3";   // 绝对路径
+    var exist = Storages.isExistentStorage(arcname);
+    if (exist) Storages.addAutoPath(arcname + ">");
+    return exist;
+}
+```
+
+**判据不要用「文本是否替换成功」**（它同时受注册与优先级两个变量影响）。
+用运行时内存判据（见 `docs/methodology.md`「内存判据」一节）：
+注册成功时进程内存会出现 `<name>.xp3>`，数量 ≈ 该归档的条目数；
+`addArchive` 系还会额外出现 `<name>/` 目录形式。
+
+#### ② 测优先级（本卷新增实测结论）
+
+**分组规律**（多作一致时可沿用，换作仍需重验）：
+
+| 注册方式 | 能否覆盖最早注册的基础归档的同名文件 |
+|---|---|
+| exe 硬编码（相对路径，最早注册） | 最高 |
+| `addArchive` 系（`System.exePath + name + ".xp3"`，**绝对路径**） | **不能** |
+| 启动流程内手动 `Storages.addAutoPath("<相对路径> + ">子域/")` | **能** |
+
+即：**「后注册优先」只在同为相对路径的注册之间成立**；`addArchive` 的绝对路径整体劣于
+基础归档的相对路径。**对已注册路径 `removeAutoPath` 后重新 `addAutoPath` 也不会改变这个分组结论。**
+
+验证方法：把自己的条目（与官方同名）放进去，用内存判据搜「包内独有文本」是否进内存
+—— 进了说明自己的条目被打开，没进说明被官方包先命中。
+
+#### ③ 借高优先级归档做 hook 注入
+
+前提：找到**会被引擎执行**的 TJS 载体。三种来源：
+
+| 载体 | 条件 |
+|---|---|
+| 基础归档内某脚本 | 要重建原生归档（体积/完整性代价） |
+| **官方补丁/附加归档内的脚本** | 该归档内的脚本有 `KAGLoadScript` 调用链（典型：附加数据包里的初始化脚本） |
+| 「基础归档里不存在、但会被可选加载」的脚本 | `KAGLoadScriptIfExists` 一类；**注意 `@if (DEBUG)` 是编译期指令，release 版整块剔除** |
+
+钩子写法（顺序很重要）：
+
+```tjs
+// 1) 先执行被替换脚本的原逻辑（原文件改名保留），保持执行环境一致
+Scripts.execStorage("<原脚本名>_orig.tjs");
+// 2) 再注册自己的搜索路径（相对路径！绝对路径会输给基础归档）
+Storages.addAutoPath("<arc>.xp3>scn/");           // 自己的数据归档
+Storages.addAutoPath(System.exePath + "scn/");    // 松散目录，便于热更新
+```
+
+要点：
+
+* **先转发、后注册**：先 `addAutoPath` 再转发曾导致语言/配置初始化回落到默认值。
+* **只注册子域**（`<arc>.xp3>scn/`），不要注册归档根（`<arc>.xp3>`）——
+  根域会插手所有裸名解析（配置、字体、素材），风险面大得多。
+* 注册顺序 = 优先级（后注册优先），兼容第三方的名字放前面、自己的放后面。
+* 替换官方字节码脚本时**必须原样保留并转发**，否则会丢官方功能。
+
+#### ④ 无合法名可用
+
+1. hook 注入：同 ③，但注入点需由外部提供；
+2. DLL 注入：hook 引擎的流打开入口（`TVPCreateStream`），把
+   `<exePath><任意>.xp3>内部路径` 直接打开，完全绕开归档注册。
+   代价：多一个 DLL、可能触发杀软误报、需按 32/64 位适配。
+   参考实现：KirikiriTools（`KirikiriUnencryptedArchive`）、KrkrPatch、KrkrExtract。
+
+#### 附：明文包的定位
+
+按真名打进普通（未加密）xp3、放进游戏目录即可被读到（发行版样本中基础归档本身就是明文）。
+但**多数发行版的基础归档是加密变体**，此时未加密包需要配套 DLL（如 KirikiriUnencryptedArchive）
+才能被读；判型见 [file-formats.md](file-formats.md) §1。
+
+`*.sig` 是实现外的 RSA-PSS 签名，**引擎不校验**（替换归档后游戏照常启动，实测）；
+它只影响「Steam 校验文件完整性」会否还原——不改已签名原包、只新增/替换并保留备份即可。
 
 ## 4. 域（`domain_hash`）= 目录哈希，语言只是目录名
 

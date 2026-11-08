@@ -38,6 +38,21 @@ krkrz（KiriKiri Z）提供归档与 TJS 运行时；M2 的工具链把剧情编
   （mode 1 = 相邻 bit 两两对调，解出 `FF FE` 开头的 UTF-16LE；mode 2 = zlib）。
   这是引擎层通用机制，不限于剧情脚本，凡是 `FF FE` 开头的 UTF-16LE 资源都可能被套。
 - 索引里的文件名是 UTF-16LE。
+
+**顶层还可以有 `hnfn` 块（哈希 → 真名映射表）**，它不是 `File` 条目，而是并列在索引根上：
+
+```
+"hnfn" + i64 size + n × [u32 hash, i16 namelen, UTF-16LE name]
+```
+
+带加密/哈希命名的发行版（条目名是 32 位十六进制或伪名）**必须有这张表**：
+引擎按请求名先经它映射到哈希，再去索引里找条目。缺表的表现是「文件明明在包里却报
+`<name> not found`」。一个文件一条 `hnfn` 块（不是全表挤在一个块里）也合法。
+
+`File` 块内 chunk 顺序实测为 `time, adlr, segm, info`（首个条目可省略 `time`）；
+`info.flags` 的 `0x80000000` 位表示内容加密。**顺序敏感**：按别的顺序重写可能导致
+条目被跳过（建议照官方顺序）。
+
 - 库：`galrev.krkr.xp3`（`parse_xp3` / `extract_entry` / `unpack_xp3` / `pack_xp3`）
 
 ### 1.2 Hxv4 变体（wamsoft 加密）
@@ -66,6 +81,20 @@ krkrz（KiriKiri Z）提供归档与 TJS 运行时；M2 的工具链把剧情编
 - 库：`galrev.krkr.hxv4`
 
 ---
+
+### 1.3 Cx 变体（CxEncryption）
+
+与 Hxv4 **不是同一方案**，单独成篇见 [cx-crypto.md](cx-crypto.md)。速查：
+
+```
+0x17 4 u32 = 0x80           变体标记
+0x20 8 u64 真索引偏移        索引本身**明文**（常 zlib）
+条目名 = md5(UTF-16LE 全路径)；adlr = adler32(明文)
+条目内容 = Cx 加密（XOR 密钥流），Encrypt 与 Decrypt 同式
+```
+
+判型：`0x17 == 0x80`、索引可解析、但内容解不开 → Cx（Hxv4 的索引直接是密文）。
+参数每作一组、需注入；库 `galrev.krkr.cx`。
 
 ## 2. `.scn`（剧情脚本容器）
 

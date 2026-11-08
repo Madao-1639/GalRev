@@ -9,7 +9,8 @@ krkrz（KiriKiri Z）是吉里吉里系列的当代分支（32 位 PE，TJS2 运
 
 ## 引擎概述
 
-- **归档**：`*.xp3`（chunk 树索引）；加密变体在索引里多一个 `Hxv4` 描述符，
+- **归档**：`*.xp3`（chunk 树索引）；加密变体有两族：**Hxv4**（索引里多一个 `Hxv4` 描述符）与
+  **Cx**（索引明文、条目内容加密，见 [cx-crypto.md](cx-crypto.md)）；Hxv4 的
   条目名退化为伪名（`U+5000 + i`），负载用 XChaCha20-Poly1305 加密、条目内容再过一层 DRIP XOR 过滤器
   （见 [file-formats.md](file-formats.md) §1、[hxv4-crypto.md](hxv4-crypto.md)）。
 - **脚本**：`.scn` = `mdf\0` + zlib + **PSB v3**；加密归档解出来的是裸 PSB。
@@ -34,11 +35,12 @@ krkrz（KiriKiri Z）是吉里吉里系列的当代分支（32 位 PE，TJS2 运
 |---|---|
 | [file-formats.md](file-formats.md) | 判型速查、普通 xp3 / Hxv4 变体容器、`.scn` 两种外壳、PSB v3（头部/值类型/名字字典树/字符串池/重写策略）、TJS binary Variant、其它载体 |
 | [script-text.md](script-text.md) | MDF 文本模型：场景键、对白 5 元、分页 3/5 元、`length` 两派口径、行内标记、回写不变量、跨版本对齐键 |
+| [cx-crypto.md](cx-crypto.md) | Cx 变体：判型、参数（mask/offset/prolog/branch/control_block）、参数从 GARbro 方案库离线导出、加减密同一式、写入注意 |
 | [hxv4-crypto.md](hxv4-crypto.md) | 映射表帧与记录（`packed` 低位 = 条目下标）、DJB 布局 AEAD、DRIP VM 与四层 XOR 过滤器、参数清单与获取流程、判据与不变量 |
 | [engine-mechanics.md](engine-mechanics.md) | 引擎身份/指纹、执行层分工、启动链与**归档注册顺序/优先级**、名字与域规范化、补丁插入的两种通用手段、域=目录哈希、字体重定向、移植操作顺序 |
 
 工具库：`galrev/krkr/`，纯标准库，**所有游戏标定值由调用方注入**：
-`xp3`（普通归档读写）、`hxv4`（加密变体读取 + 参数 profile）、`hxv4_write`（加密变体写入，与读取端严格互逆）、`hxv4hash`（名字层：`file_hash` / `domain_hash`）、`psb`（对象图与字符串池级重写）、`scn`（MDF 文本模型）。调试器/MCP 客户端属工具而非格式知识，不随库分发。
+`xp3`（普通归档读写）、`cx`（Cx 变体加解密，参数注入）、`hxv4`（加密变体读取 + 参数 profile）、`hxv4_write`（加密变体写入，与读取端严格互逆）、`hxv4hash`（名字层：`file_hash` / `domain_hash`）、`psb`（对象图与字符串池级重写）、`scn`（MDF 文本模型）。调试器客户端属工具而非格式知识，不随库分发。
 
 ## 新项目快速通道
 
@@ -68,6 +70,8 @@ krkrz（KiriKiri Z）是吉里吉里系列的当代分支（32 位 PE，TJS2 运
 | 对白行 flag / 分页形态 | `[3] = 64`；3 元与 5 元分页并存 | 其它作品可能不同元数或 flag |
 | `length` 口径 | 原版/民间工具链 = 原始长度；官方本地化 = 显示长度 | 取决于打包工具，不是引擎常量 |
 | 语言域 | 3 个 domain 对应 3 种语言 | domain 可能只是分包维度 |
+| 相对 / 绝对 autopath 分组 | `addArchive` 的绝对路径压不住 exe 注册的相对路径；启动流程内手动 `addAutoPath` 相对路径可以 | 排序实现可能随引擎版本变化 |
+| `hnfn` 表 | 哈希命名包每条一个块 | 有的包可能省略或合并 |
 | bootstrap 例程 RVA | `0xE2D0` / `0x15630` / `0x157D0` / `0x10410`，seed 全局 `0x81758` | 换构建即变 |
 | manager 结构偏移 | `core+0x3038` key、`+0x3058` nonce1、`+0x3078` nonce0 | 可能随引擎版本变化 |
 | DRIP 规模 | context 3106 × u32、lanes 128 条 | 查表长度与 lane 数可能不同 |
