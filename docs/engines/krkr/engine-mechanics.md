@@ -54,6 +54,9 @@ opcode 枚举见 krkr2 源码 `tjs2/tjsInterCodeGen.h`（`VM_NOP` 起；`TJS_NOR
 > ⚠️ `@if (XXXX)` 是**编译期**指令：release 版会把整块剔除。依赖 DEBUG 分支的脚本/钩子
 > 在正式版里不存在 —— 反汇编时看到常量而没有对应代码，多半就是这个原因。
 
+库：`galrev.krkr.tjs2`（`load(bytes)` → 对象表；`disasm(file, only=None)` → 汇编文本；
+遇到未知 VM 码直接抛错，不猜操作数长度）。CLI 支持 `--strings` 只列字符串池、`--only` 只反汇编单个对象。
+
 ## 3. 归档加载与覆盖
 
 ### 3.1 启动链
@@ -84,11 +87,14 @@ exe
 
 - **`>` 只表示「归档 → 归档内目录」**：`A.xp3>` = 归档根，`A.xp3>sub/` = 归档内子目录；不带 `>` 的是普通目录。
 - 同一批代码内的先后也算顺序：语言段落里松散目录（`data/<lang>/scn/`）先注册、`<arc>><lang>/scn/` 后注册 ⇒ **往松散目录放同名文件会被归档内的同名条目压住**（实测，别指望"目录比包优先"）。
+- **【跨作需重验】优先级还会成组分层**：exe 用**相对路径**注册的基础归档（`data.xp3`）压住 `addArchive` 系（`exePath + name + ".xp3"` 绝对路径）的同名条目；而启动流程内后注册的相对路径或松散目录又能反过来压住 `data.xp3`。此时「越晚越高」只在同一分组内成立，跨分组看注册方式（相对 / 绝对）。
+- **归档子域的覆盖面受索引写法约束**：`addAutoPath("arc.xp3>sub/")` 只有在索引**每文件一条 `hnfn`** 时才能暴露该子目录下所有名字；单条 `hnfn` 时只认第一个（见 file-formats.md §1.1）。与上一条叠加才能解释「某个包只对入口脚本生效」。
 
 ### 3.3 名字与域的规范化
 
 - 请求名与 autopath 目录在查索引前会**小写化**（`system/Initialize.tjs` 能命中归档里的 `initialize.tjs` 即为此）。**【跨作需重验】**小写化究竟发生在存储层还是加密层尚未分离验证。
-- 解析方式：autopath 前缀与请求名拼成相对路径，再按「**目录部分 = 域、文件名部分 = 条目**」去归档索引里查（域的含义见 §4）。
+- 解析方式：autopath 是**纯字符串前缀**，与请求名直接拼接后去存储里找；再按「**目录部分 = 域、文件名部分 = 条目**」去归档索引里查（域的含义见 §4）。
+- 哈希命名的归档（条目名 = `md5(UTF-16LE 全路径)`，打包器选择）要求拼接结果**能 hash 命中索引项**；因此请求名的扩展名与大小写必须与打包时一致（`a.txt` 与 `a.txt.scn` 是两个名字，`getPlacedPath` 前者为空）。
 
 ### 3.4 补丁生效 SOP（决策树）
 
@@ -136,6 +142,11 @@ function useArchiveIfExists(name) {
 用运行时内存判据（见 `docs/methodology.md`「内存判据」一节）：
 注册成功时进程内存会出现 `<name>.xp3>`，数量 ≈ 该归档的条目数；
 `addArchive` 系还会额外出现 `<name>/` 目录形式。
+
+**但「注册」不等于「生效」**：条目数命中只说明包被打开列出，不说明目标条目被读取。
+生效至少还要两步判据：①搜索「包内独有文本」是否进内存（进了才说明条目被打开）；
+②给目标文件埋一个可见标记（改一句文本/加一个弹窗），跑一遍确认标记出现。
+只做 ① 容易把「包被列出」误判成「内容被采用」。
 
 #### ② 测优先级（本卷新增实测结论）
 
@@ -214,6 +225,8 @@ domain_hash = SipHash-2-4( UTF16LE( 小写目录 + 盐 ), key = 16 个 0 字节 
 
 ## 5. 字体
 
+### 5.1 静态重定向（改 `*.tjs`）
+
 文本补丁一般不改图片，只换字体与字号，做法是在明文 `*.tjs` 里重定向字体：
 
 - `embfontlist.tjs`：把自带字体文件注册成字面名（font face）
@@ -221,6 +234,22 @@ domain_hash = SipHash-2-4( UTF16LE( 小写目录 + 盐 ), key = 16 个 0 字节 
   语言键（`lang_cn` 等）常被注释掉，走 `lang_*` 通配回落
 - `prerenderfontex.tjs` / `editstandtext.tjs` / `textrender.dll` 参与字形预热与排版
 - 移植到另一发行版前，先确认目标版自己的字体映射（在加密归档内，用 [hxv4-crypto.md](hxv4-crypto.md) 解出）
+
+### 5.2 KAG 多语言：语言轨 = 块序号，字体按轨分开
+
+- 语言表：`SystemConfig.multiLangLanguageTags = ["jp","en","cn", …]`（`main/default.tjs`），运行时对应全局 `LanguageTags`；`multiLangFirstTag` 决定首次启动语言。
+- 每条对白的语言块 `blocks[]` **按语言表序号取**；引擎调用 `GetScnConvertLangList()`（发行方脚本里定义、TJS 侧无调用者）拿到「除首语言外的 tag 列表」，这决定了 `blocks` 的顺序契约。
+- 想在运行时**新增一条语言轨**：在启动流程末尾给 `SystemConfig.multiLangLanguageTags` 与 `LanguageTags` 各追加一个 tag 即可（须先让脚本里存在对应序号的块，否则取到空内容）。
+- 每轨字体：消息正文吃 **`kag.chDefaultFace`**（`setMessageLayerUserFont()` 逐层写 `layer.userFace`）；名字/选项层走 `kag.getLanguageFont(idx)`，其覆盖槽是 **`kag.scflags["langUserFontFace" + idx]`**（格式来自 `SystemConfig.multiLangUserFontFaceFmt = "langUserFontFace%d"`），**在 `kag` 上而不是 `SystemConfig` 上**。
+- 字体映射：`main/config.tjs` 的 `LanguageDefaultFontFaceMap`（正文）/ `LanguageNameFontFaceMap`（名字）/ `MessageDefaultFontFaceMap`（getter，每次访问用 `MakeFontFaceMap` 重建）。**TJS 里行首 `;` 是空语句，不是注释** —— 形如 `;global.X = …` 的行其实会执行。
+
+### 5.3 运行期注册字体（`System.addFont` / `PreRenderFontEx`）
+
+- `font/embfontlist.tjs` 由**引擎启动时**读取（清单结构：`["LICENSE.txt", [ %[name,file,face,capname], … ], …]`）；对应的 TJS 侧加载器 `LoadEmbeddedFontList()` 在部分发行版里存在但运行期看不到产物（`SystemConfig.EmbeddedFontList` 恒为 void），官方嵌入字体走引擎原生路径。
+- 原生 API：**`System.addFont(file, flag)`**（有的版本由插件 `addFont.dll` 提供；缺插件时 `typeof System.addFont` 为 `undefined`）。它**只接受真实文件路径**：归档条目（`archive://…`）即使 `Storages.isExistentStorage` 为真也读不出字体，表现为内部取到 void 后抛 `Cannot convert the variable type ((void) to Object)`。
+- 包装层：`sysscn/PreRenderFontEx.tjs` 定义 `PreRenderFontEx` 类（只把类挂到 `global.PreRenderFontEx`，实例由 KAG 初始化时创建），其实例方法 **`AddTrueTypeFont(alias, face, file, 0)`** 会做「检查 `System.addFont` → 检查文件存在 → `MakeFontInfoTable`/`TTFFontNames` → `System.addFont(file,0)`」。
+- 时机：钩子脚本在 `main/custom.tjs` 末尾执行时 `kag` 还不存在，`PreRenderFontEx` 也未必是实例；把注册放在 `addAfterInitCallback` 里最稳（此时 `PreRenderFontEx` 已是实例、`System.addFont` 已可用）。不要在钩子里重复 `KAGLoadScript("PreRenderFontEx.tjs")`，它会把全局覆盖回类。
+- 验证「别名是否真的生效」：把 alias 临时指向一个字形风格明显不同的字体文件（如把黑体来源换成宋体），渲染风格变化即说明链路成立；只改字体名看不出区别。
 
 ## 6. 操作顺序（一次文本移植）
 

@@ -6,7 +6,8 @@
 - cx:    Cx 变体加解密（条目内容 XOR 密钥流；参数 profile 由调用方注入）
 - hxv4:  krkrz 的 Hxv4 加密归档（wamsoft 变体）：XChaCha20-Poly1305 索引 + DRIP 过滤器
          + 参数 profile 载入。参数是每游戏构建一组，必须由调用方注入（见 load_json）
-- psb:   PSB v3 对象图读取与「字符串池级」重写（零改动往返逐字节一致）
+- psb:   PSB v3 对象图读取、「字符串池级」重写（零改动往返逐字节一致），以及 `PsbGraph` 整图重排（`parse_graph()` → `build()`，用于插入/删除对象；零改动逐字节一致）
+- tjs2:  TJS2100 字节码读取 + 反汇编（只读，不反编译；用于读 KAG/脚本层逻辑）
 - scn:   MDF 剧情脚本（.scn = `mdf\0` + zlib + PSB）的文本模型：
          scenes / texts / selects、页形态、length 口径、行内标记
 - hxv4hash:    名字层（`file_hash` = BLAKE2s；`domain_hash` = SipHash-2-4(小写目录 + 盐)，根目录只哈希盐）
