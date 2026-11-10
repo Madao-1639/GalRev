@@ -251,7 +251,40 @@ domain_hash = SipHash-2-4( UTF16LE( 小写目录 + 盐 ), key = 16 个 0 字节 
 - 时机：钩子脚本在 `main/custom.tjs` 末尾执行时 `kag` 还不存在，`PreRenderFontEx` 也未必是实例；把注册放在 `addAfterInitCallback` 里最稳（此时 `PreRenderFontEx` 已是实例、`System.addFont` 已可用）。不要在钩子里重复 `KAGLoadScript("PreRenderFontEx.tjs")`，它会把全局覆盖回类。
 - 验证「别名是否真的生效」：把 alias 临时指向一个字形风格明显不同的字体文件（如把黑体来源换成宋体），渲染风格变化即说明链路成立；只改字体名看不出区别。
 
-## 6. 操作顺序（一次文本移植）
+### 5.4 官方字体是按语言子集裁剪的，判「够不够」不能只看 cmap
+
+- 发行版自带的字体通常是**按本作语言子集裁剪**过的（JP 子集没有简体字形，TC 子集没有「简/苏/亚」这类简中专用字）；「官方字体能用」这句话只在官方语言轨成立，换一条轨、或文本里出现子集外的字，就会掉到回落字体或直接缺字 ⇒ 多语言移植不要复用官方字体，随包自带覆盖字体。
+- **cmap 覆盖率 ≠ 渲染结论**：`cmap` 只证明「码位在表里」，不证明最终渲染用的就是它——渲染器可能选了别的 face，字形也可能被裁掉；反过来覆盖率不高、缺的都是生僻字，也可能完全可接受。唯一可靠判据是把候选装进去、**实际渲染**同一段文本再看。
+- **合成的粗体不算粗体**：字体没有粗体面时，`FontStyle.Bold` 会让渲染器做「假粗体」（笔画均匀加粗、字面宽度跟着变），与各字重真实设计出来的粗体不是一回事；拿它做「哪种字体更像」的对照会得出错误结论。要比较字重就按**墨覆盖率**量化：候选与参照各按自己的背景归一化，只比「每像素墨覆盖率」这一个数，比肉眼可靠。
+- 配套判据：验证别名链路时把 alias 临时指向风格明显不同的字体（§5.3 末条）；验证「缺字」时优先挑本语言轨独有、且官方子集里明显没有的字。
+
+## 6. UI 资源：文案、贴图、布局
+
+UI 与剧情脚本走**两套完全不同的通路**，出问题时先分清是哪一路，别混着排查。
+
+**① 文案（`syslangtext_<tag>.ini` / `help_*_<tag>.txt`）**
+
+- 加载者是 `sysscn/syslangtext.tjs`（字节码）：`sysscn/multilang.tjs` 顶层 `KAGLoadScript("syslangtext.tjs")` 之后调用 `LoadSysLangText(name="syslangtext_", ext=".ini", tags=LanguageTags, …)`——对 `tags` 里每个非空 tag 拼 `<name><tag><ext>`，先用 `Storages.isExistentStorage` 判存在再解析。
+- **时机坑**：`multilang.tjs` 由 `main/custom.tjs` 顶层 `KAGLoadScript` 载入，而补丁钩子通常挂在同一文件末尾（`System.getArgument("-steam")` 那个分支），**晚于**它；所以钩子里新增语言 tag 之后必须**再补一次 `LoadSysLangText("syslangtext_", ".ini", ["<tag>"])`**，否则该轨的文案永远读不到。判据：补载前 `GetSysLangText(<键>, <tag>)` 为空、补载后有值。
+- `help_conf` / `help_exch` **不预加载**：打开设置页时 `CustomHelpTextManager` → `loadHelpTexts` 被 `objectHookInjection` 转成 `GetUIFile(name, ".txt")` 按需读取，钩子里把路径注册好即可。
+- 侧栏快捷存读的提示语是 `EzSaveHelpText`，`main/ezsave.tjs` 会 `text.replace(/,/, "\n")` ⇒ **值里的逗号不能删**，删了就丢换行。
+
+**② 贴图与布局（`uipsd/*.pimg` + `uipsd/*.func`）**
+
+- `.pimg` = PSB v3 + chunk 资源（每层一份 `<layer_id>.tlg`，见 [file-formats.md](file-formats.md) §5.1）。
+- `.func` 是 KAG 的 UI 布局脚本，**同样是 TVP 加扰文本（mode 1）**；首行 `psd,<名字>` 决定用哪张图，写成 `psd,&GetUIFile("<名字>")` 才会按**当前 UI 语言**找变体。往归档里塞 UTF-8 明文会直接报 `Cannot convert given narrow string to wide string`。
+- 语言变体规则即 `main/custom.tjs` 的 `GetUIFile`：`<chop>_<CurrentLanguageUITag><ext>` 存在则用，否则回落原名；目录子域由 `system/initialize.tjs` 的 `setupSubFolders(["uipsd/en", "uipsd/cn", …])` 注册（**只注册目录，不注册同名 xp3**）。
+- 因此新增一条语言轨要做三件事：`uipsd/<lang>/<名>_<tag>.pimg`（贴图）、把对应 `.func` 首行改成 `&GetUIFile(…)`（否则永远用回落的原图）、文本走 ①。**机制本身不变：变体靠文件名后缀，不靠目录**。
+- 【跨作需重验】`CurrentLanguageUITag` 与 `LanguageTags` 是否同一个值、`GetUIFile` 的拼接规则、`setupSubFolders` 清单，各发行版可能不同。
+
+**③ 特例：标题可能是「烘在图上」的**
+
+语言选择页那种三行标题（`System Language` 之类）常被直接画进贴图里（`conf_lang.pimg` 的某一层），此时**改 `syslangtext` 完全无效**——判据是把那一层的 `.tlg` 换成别的图，标题跟着变就说明是位图。若该页的 `.func` 首行不经过 `GetUIFile`，那么所有语言轨看到的本就是同一张图（不是"被补丁强制成某语言"），要换语言只能自造 `<名>_<tag>.pimg` 并把 `.func` 首行改成 `psd,&GetUIFile("<名>")`（找不到变体时回落原图，对其它轨语义中性）。
+
+**④ 这条链上的字体**：贴图里的字形与脚本里的字体是两条独立通路，贴图要单独渲染（选字重、超采样降采样），字体判据见 §5.4。
+
+## 7. 操作顺序（一次文本移植）
+
 
 | 步 | 做什么 | 库/工具 |
 |---|---|---|

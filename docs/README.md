@@ -41,7 +41,7 @@
 | [engines/krkr/file-formats.md](engines/krkr/file-formats.md) | 判型速查、普通 xp3 / **Hxv4 加密变体**容器、`.scn` 两种外壳、PSB v3（头部/值类型/名字字典树/字符串池/重写策略）、TJS binary Variant |
 | [engines/krkr/script-text.md](engines/krkr/script-text.md) | MDF 文本模型：场景键、对白 5 元、分页 3/5 元、**`length` 两派口径**、行内标记、回写不变量、跨版本对齐键 |
 | [engines/krkr/hxv4-crypto.md](engines/krkr/hxv4-crypto.md) | 映射表帧与记录（`packed` 低位 = 条目下标）、**DJB 布局 AEAD**、DRIP VM 与四层 XOR 过滤器、参数清单与获取流程、判据与不变量 |
-| [engines/krkr/engine-mechanics.md](engines/krkr/engine-mechanics.md) | 引擎身份/指纹、执行层分工、**归档注册顺序与明文 xp3 覆盖**、语言域、字体重定向、移植操作顺序 |
+| [engines/krkr/engine-mechanics.md](engines/krkr/engine-mechanics.md) | 引擎身份/指纹、执行层分工、**归档注册顺序与明文 xp3 覆盖**、语言域、字体重定向与子集判据、**UI 资源的 `_<tag>` 变体**、移植操作顺序 |
 
 ## 跨引擎卷（Willplus → AdvHD）
 
