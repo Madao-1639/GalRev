@@ -203,6 +203,47 @@ class CxProgram:
         raise CxProgramError("CxEncryption program without RETN bytecode")
 
 
+def tweak(buf: bytearray, pos: int, count: int, offset: int, ret1: int, ret2: int) -> None:
+    """一段跨度上的 XOR：常态是常量字节 key3，另有两个位置各多 XOR 一个字节。
+
+    `ret1` / `ret2` 是「加密程序」对某 key 求出的两个 32 位结果：
+    `ret1` 的低 8 / 8..15 / 16..23 位分别是 `key3` 与两处附加字节，`ret2` 的高/低 16 位是两处位置。
+    """
+    key1 = ret2 >> 16
+    key2 = ret2 & 0xFFFF
+    key3 = ret1 & 0xFF
+    if key1 == key2:
+        key2 = (key2 + 1) & M32
+    if key3 == 0:
+        key3 = 1
+    if offset <= key2 < offset + count:
+        buf[pos + key2 - offset] ^= (ret1 >> 16) & 0xFF
+    if offset <= key1 < offset + count:
+        buf[pos + key1 - offset] ^= (ret1 >> 8) & 0xFF
+    for i in range(count):
+        buf[pos + i] ^= key3
+
+
+def crypt_stream(buf: bytearray, base_offset: int, key_a, key_b) -> bytes:
+    """按两段密钥对整条内容做 XOR（加解密同一算式）。
+
+    `base_offset` 之前用 `key_a`，之后用 `key_b`；`key_a`/`key_b` 是 `(ret1, ret2)`。
+    `base_offset == 0` 时整条只用 `key_b`（引擎此时把第二段当作从 0 起的唯一区间）。
+
+    这一层只关心「给定两个密钥三元组怎么 XOR」，与密钥**怎么算出来**无关：
+    Cx 由本模块的字节码 VM 算，Cxdec V2 由 `galrev.krkr.cxdec_v2` 交给插件本体算。
+    """
+    head = min(base_offset, len(buf))
+    if head > 0:
+        tweak(buf, 0, head, 0, key_a[0], key_a[1])
+        if head == len(buf):
+            return bytes(buf)
+        tweak(buf, head, len(buf) - head, head, key_b[0], key_b[1])
+    elif buf:
+        tweak(buf, 0, len(buf), 0, key_b[0], key_b[1])
+    return bytes(buf)
+
+
 class CxCrypt:
     """一份 Cx 方案：可以加密也可以解密（同一算式）。"""
 
@@ -230,23 +271,6 @@ class CxCrypt:
             control_block=prof["control_block"],
         )
 
-    # ------------------------------------------------------- byte layer
-    def _tweak(self, buf: bytearray, pos: int, count: int, offset: int,
-               ret1: int, ret2: int) -> None:
-        key1 = ret2 >> 16
-        key2 = ret2 & 0xFFFF
-        key3 = ret1 & 0xFF
-        if key1 == key2:
-            key2 = (key2 + 1) & M32
-        if key3 == 0:
-            key3 = 1
-        if offset <= key2 < offset + count:
-            buf[pos + key2 - offset] ^= (ret1 >> 16) & 0xFF
-        if offset <= key1 < offset + count:
-            buf[pos + key1 - offset] ^= (ret1 >> 8) & 0xFF
-        for i in range(count):
-            buf[pos + i] ^= key3
-
     def _execute(self, key: int) -> tuple[int, int]:
         seed = key & 0x7F
         program = self._programs.get(seed)
@@ -259,22 +283,14 @@ class CxCrypt:
     # -------------------------------------------------------- public
     def crypt(self, entry_hash: int, data: bytes) -> bytes:
         """对整条内容加/解密（offset 从 0 起，与引擎的流式解密等价）。"""
-        buf = bytearray(data)
         key = entry_hash & M32
         base_offset = (key & self.mask) + self.offset
+        key_a = self._execute(key)
         if base_offset > 0:
-            head = min(base_offset, len(buf))
-            self._tweak(buf, 0, head, 0, *self._execute(key))
-            if head == len(buf):
-                return bytes(buf)
-            pos, offset = head, head
-            key = ((key >> 16) ^ key) & M32
+            key_b = self._execute(((key >> 16) ^ key) & M32)
         else:
-            pos, offset = 0, 0
-        left = len(buf) - pos
-        if left:
-            self._tweak(buf, pos, left, offset, *self._execute(key))
-        return bytes(buf)
+            key_b = key_a
+        return crypt_stream(bytearray(data), base_offset, key_a, key_b)
 
     # ------------------------------------------------- program builder
     def _generate_program(self, seed: int) -> CxProgram:
