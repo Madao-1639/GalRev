@@ -36,7 +36,7 @@ import subprocess
 import tempfile
 import zlib
 
-from . import cx
+from . import cx, xp3
 
 M32 = 0xFFFFFFFF
 
@@ -411,6 +411,16 @@ class KeyCrypt:
 
 
 # ---------------------------------------------------------------- 归档读取
+
+
+def entries(mm):
+    """`[xp3.Xp3Entry]` with a name and at least one segment.
+
+    `xp3.parse_xp3` reads sequentially from the current position, so seek(0) first -- the
+    same mmap can then be parsed again.
+    """
+    mm.seek(0)
+    return [e for e in xp3.parse_xp3(mm, show_log=False) if e.name and e.segms]
 
 
 def read_entry(mm, entry) -> bytes:

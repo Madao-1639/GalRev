@@ -132,8 +132,8 @@ def update_adler32(data: memoryview, adler: int) -> int:
 
 def decrypt_text(data: memoryview, enc_type=1) -> memoryview:
     if enc_type == 2:
-        zsize, fsize = struct.unpack("<qq", data)
-        return memoryview(zlib.decompress(data[16:]))
+        zsize, fsize = struct.unpack_from("<qq", data)
+        return memoryview(zlib.decompress(data[16: 16 + zsize]))
 
     outio = io.BytesIO()
     outio.write(b"\xff\xfe")
@@ -150,6 +150,36 @@ def decrypt_text(data: memoryview, enc_type=1) -> memoryview:
                 outio.write(struct.pack("<H", d))
 
     return outio.getbuffer()
+
+TEXT_MAGIC = bytes.fromhex("fefe")
+TEXT_BOM = bytes.fromhex("fffe")
+
+
+def encrypt_text(text: str, enc_type: int = 1, level: int = 6) -> bytes:
+    """Inverse of `decrypt_text` -- produce a TVP scrambled text stream.
+
+    Layout: `FE FE <enc_type> FF FE` + UTF-16LE body (never a second BOM).
+    `enc_type` 0 = per-uint16 XOR (legacy), 1 = even/odd bit swap (involution, what
+    krkrz text resources use), 2 = zlib of the UTF-16LE body with two int64 sizes.
+    """
+    body = bytearray(text.encode("utf-16-le"))
+    if enc_type == 1:
+        for i in range(0, len(body) - 1, 2):
+            d = struct.unpack_from("<H", body, i)[0]
+            d = (d & 0xAAAA) >> 1 | (d & 0x5555) << 1
+            struct.pack_into("<H", body, i, d)
+        return TEXT_MAGIC + bytes([enc_type]) + TEXT_BOM + bytes(body)
+    if enc_type == 2:
+        raw = bytes(body)
+        blob = zlib.compress(raw, level)
+        return (TEXT_MAGIC + bytes([enc_type]) + TEXT_BOM
+                + struct.pack("<qq", len(blob), len(raw)) + blob)
+    if enc_type == 0:
+        # 每 uint16 的 XOR 变体：krkrz 只在极老的资源里用，本库未验证其反变换，
+        # 宁可报错也不写一个可能读不回来的编码。
+        raise NotImplementedError("enc_type 0 (legacy XOR) encoder is not implemented")
+    raise ValueError(f"unsupported scramble enc_type {enc_type}")
+
 
 def extract_entry(data: memoryview, entry: Xp3Entry, base_offset=0, xp3filter: xp3filter_t=None) -> memoryview:
     outio = io.BytesIO()

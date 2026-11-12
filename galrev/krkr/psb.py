@@ -489,6 +489,67 @@ class PsbFile:
             body[pos + 1:pos + 1 + width] = value.to_bytes(width, "little")
         return bytes(body)
 
+    # ------------------------------------------------------- chunk resources
+    def resource_bytes(self, index: int) -> bytes:
+        """Raw bytes of chunk resource `index` (e.g. the TLG images inside a `*.pimg`)."""
+        start = self.offset_chunk_data + self.chunk_offsets[index]
+        return self.body[start: start + self.chunk_lengths[index]]
+
+    def replace_resources(self, mapping: dict[int, bytes]) -> bytes:
+        """Replace chunk resources and rebuild the chunk table (returns new PSB bytes).
+
+        Official packers 4-byte align every chunk start and keep a fixed-size padding after
+        the two tables, so a plain re-pack would not round-trip: this reproduces both. Also
+        recomputes the three chunk offsets and the header checksum at `0x28`. An empty
+        `mapping` returns the body unchanged (zero-change round-trip).
+        """
+        if not mapping:
+            return self.body
+        br = io.BytesIO(self.body)
+        br.seek(self.offset_chunk_offsets)
+        _offs, cw1, ew1 = _read_array_style(br)
+        br.seek(self.offset_chunk_lengths)
+        _lens, cw2, ew2 = _read_array_style(br)
+
+        data = bytearray()
+        offsets: list[int] = []
+        lengths: list[int] = []
+        for i in range(len(self.chunk_offsets)):
+            blob = mapping.get(i)
+            if blob is None:
+                blob = self.resource_bytes(i)
+            offsets.append(len(data))
+            lengths.append(len(blob))
+            data += blob
+            if i != len(self.chunk_offsets) - 1:      # official packer: 4-byte aligned starts
+                data += bytes(-len(data) % 4)
+
+        offs_blob = _pack_array_styled(offsets, cw1, ew1)
+        lens_blob = _pack_array_styled(lengths, cw2, ew2)
+        orig_tables = self.offset_chunk_data - self.offset_chunk_offsets
+        pad = orig_tables - (len(offs_blob) + len(lens_blob))
+        if pad < 0:
+            raise PsbError(f"chunk tables grew by {-pad} byte(s), cannot keep the layout")
+        lens_blob += bytes(pad)
+
+        prefix = self.body[: self.offset_chunk_offsets]
+        offset_chunk_lengths = self.offset_chunk_offsets + len(offs_blob)
+        offset_chunk_data = offset_chunk_lengths + len(lens_blob)
+        header = bytearray(self.body[: self.header_length])
+        struct.pack_into("<I", header, 0x18, self.offset_chunk_offsets)
+        struct.pack_into("<I", header, 0x1C, offset_chunk_lengths)
+        struct.pack_into("<I", header, 0x20, offset_chunk_data)
+        struct.pack_into("<I", header, 0x28, zlib.adler32(bytes(header[8:40])) & 0xFFFFFFFF)
+
+        orig_end = self.offset_chunk_data + max(o + l for o, l in
+                                                 zip(self.chunk_offsets, self.chunk_lengths))
+        trailing = self.body[orig_end:]
+        out = (bytes(header) + prefix[self.header_length:] + offs_blob + lens_blob
+               + bytes(data) + trailing)
+        if self.is_mdf:
+            return MDF_SIG + struct.pack("<I", len(out)) + zlib.compress(out, 9)
+        return out
+
     # ---------------------------------------------------------------- helpers
     def iter_strings(self, node=_ROOT, path: str = "$"):
         """Yield (path, PsbString) for every string slot in the graph.
