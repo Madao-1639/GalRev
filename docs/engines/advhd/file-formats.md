@@ -127,6 +127,25 @@ LNG 是 AdvHD 的文本替换机制，每个含文本的 `.ws2` 对应一个同�
 
 工具：`galrev.advhd.luac53`（解析）/ `galrev.advhd.luadis53`（反汇编，`--archive` 显式给归档路径）。
 
+### 明文 Lua 可直接加载 ★
+
+加载路径是 `luaL_loadbufferx`（归档成员读出字节后直接投喂），它会自己判定：以 `Lua` 开头按字节码解析，否则按**源码文本**解析。⇒ `Script.arc` 的成员**可以是明文 `.lua`**，改 Lua 逻辑不需要字节码编译器。明文内容按 CP932 读取（引擎的窄→宽路径），**只放 ASCII 最安全**。
+
+### 从 Lua 读 Arc 成员表（槽位探测用）
+
+引擎在 `WinMain` 依次调用 `luaL_newstate` + `luaL_openlibs` ⇒ **完整 Lua 5.3 标准库可用**（`io` / `string` / `os`）。因此 Lua 侧能直接读归档 TOC 判断成员是否存在：
+
+```lua
+local f = io.open("patch.arc", "rb")
+local blob = f:read("a"); f:close()
+local count, table_size = string.unpack("<I4I4", blob)   -- 8 字节头
+local toc = blob:sub(1, 8 + table_size)                  -- 只取成员表区
+-- 成员名为 UTF-16LE 且以 0x0000 结尾；ASCII 名按字节构造同样的模式
+local found = string.find(toc, utf16le(name) .. "\0\0", 1, true) ~= nil
+```
+
+**必须只搜索 TOC 区**（`1 .. 8 + table_size`）：成员表之后就是成员数据，整文件子串搜索会被数据里的字节序列假命中。
+
 ## NameTable.txt（说话人名替换表）
 
 引擎的说话人名替换表：脚本里的 `%L?<名>` 标记会被拿去查它，命中则替换为表右列内容。表是 UTF-16LE，不受脚本内窄字节 CP932 的限制，是角色名汉化的正路（见 [engine-mechanics.md](engine-mechanics.md)「文本编码路径」）。
