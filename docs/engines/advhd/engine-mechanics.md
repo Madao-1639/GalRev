@@ -59,7 +59,7 @@ LAYER_ORDER 是一个 `.ws2` 文件，但不是可执行剧情脚本，而是**�
 
 ### 字体装载
 
-脚本侧 `LegacyGame_utf8.lua` 定义 `g_fonts` / `g_fonts2` / `g_fonts3` 三组 `{name, file, CharSet}`，`file` 指向 `Fonts.arc` 内成员（槽名 `FOT-MatissePro-M/B.PTF` 之类，换字体只换槽内内容）。装载链：
+脚本侧 `LegacyGame_utf8.lua` 定义 `g_fonts` / `g_fonts2` / `g_fonts3` 三组 `{name, file, CharSet}`，`file` 指向 `Fonts.arc` 内成员（槽名 `FOT-MatissePro-M/B.PTF` 之类，换字体只换槽内内容），由 `LegacyGame.lua` 调 `CLegacyFontInfo:extention(归档, 成员, 族名, charset)` 装载（`getGameEngineVersion() >= 1.4` 才生效，`g_fonts2` 另需 `getLangPatchFlag()`）。**归档名不在 `ArcFileName.lua` 的分派表里，也不是引擎写死的**：它是该调用点的明文常量（WillPlus 系为 `'Fonts.arc'`，exe 中无此字符串），所以理论上可以改；只是长度一变就要重写整块 147 KB 字节码的全部偏移，而语言包放同名归档即可达成同样效果 ⇒ 优先选后者（成本权衡，不是引擎限制）。native 侧 `sub_4F4EF0` → `sub_4591E0(a3=归档, a4=成员, a5=族名, a6=charset)` → 取流包装 → `CArchiveFile2`（与资源同一四级链，裸文件开关 `a5=0` ⇒ 裸目录层对字体不生效）。装载链：
 
 1. 按槽名从 `Fonts.arc` 读出 PTF blob；
 2. 解压（见 [file-formats.md](file-formats.md)「PTF 字体」：头 4 字节大小 + LZSS + XOR，ring 写指针从 1 起，窗内存密文）；
