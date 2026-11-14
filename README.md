@@ -18,8 +18,10 @@ GalRev/
 │   ├── methodology.md         # 跨引擎逆向方法论（与引擎无关，优先读）
 │   ├── engines/
 │   │   ├── advhd/             # AdvHD（MoeNovel Amaneko 系，WillPlus 新引擎）
-│   │   └── willplus/          # Willplus 旧引擎（WillAdv）
-│   └── cross-engine/          # 跨引擎主题（WSC→WS2 转换等）
+│   │   ├── willplus/          # Willplus 旧引擎（WillAdv）
+│   │   └── krkr/              # KiriKiri Z + M2「MDF」脚本
+│   ├── cross-engine/          # 跨引擎主题（WSC→WS2 转换等）
+│   └── packers/               # 第三方打包器（Enigma Virtual Box 等，与引擎无关）
 ├── galrev/                    # 引擎通用 Python 库（纯标准库，无项目耦合）
 │   ├── advhd/                 # Arc/WS2/PNA/LNG/Lua 5.3/存档 读写与反汇编
 │   ├── willplus/              # 老式归档/WSC 解密与反汇编

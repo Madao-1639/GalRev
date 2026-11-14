@@ -13,6 +13,10 @@
          scenes / texts / selects、页形态、length 口径、行内标记
 - mdf:   多语言块布局（同一行内嵌 jp / en / cn …）：语言块 `[name, text, plain, plain2]`、
          ruby `[よみ,N]` + 后随 N+1 个基字、plain = 读音版 / plain2 = 基字版（规则可 4839/4839 复验）
+- tlg:   TLG5 / TLG6 位图**解码** + TLG5 编码（含 `TLG0.0\0sds` 15 字节外壳）。
+         `decode() -> Image`（带 `.kind`）/ `header() -> Header` / `encode(..., kind=)`。
+         TLG5/6 解码与 GARbro `ImageTLG.cs` 逐像素一致；`encode(kind="TLG6")` **显式抛错**
+         （Golomb 编码器 + 30 种预测器的选取搜索成本远大于收益，而引擎两个变体都读）
 - hxv4hash:    名字层（`file_hash` = BLAKE2s；`domain_hash` = SipHash-2-4(小写目录 + 盐)，根目录只哈希盐）
 - hxv4_write:  写入 Hxv4 变体（索引树 / 映射表封装 / 条目过滤器 / adler），与读取端严格互逆
 

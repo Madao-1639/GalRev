@@ -50,6 +50,14 @@
 | [cross-engine/README.md](cross-engine/README.md) | 两代引擎职责对照、可直接复用的资源 |
 | [cross-engine/wsc-to-ws2.md](cross-engine/wsc-to-ws2.md) | 忠实转换：文件级对照、字节模板、关键语义差异 7 条、切片模式、实现陷阱 11 条 |
 
+## 第三方打包器卷（与引擎无关）
+
+入口：[packers/README.md](packers/README.md)。
+
+| 文档 | 内容 |
+|---|---|
+| [packers/enigma-virtual-box.md](packers/enigma-virtual-box.md) | Enigma Virtual Box：`.enigma1` 判定、两种载体（exe 内嵌 / 外部 `.pck`）、节点表布局、**三个致命细节（主节点后回退 1 字节、offset 是绝对偏移、名字是双 0 结尾 UTF-16LE）**、分块 aPLib 压缩与「没有真实样本就别实现」的理由 |
+
 ## 配套代码与数据
 
 - `galrev/advhd/`、`galrev/willplus/`、`galrev/krkr/`、`galrev/convert/`：与上述文档一一对应的通用库（纯标准库，游戏专属标定值全部为调用方参数）。
