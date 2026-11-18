@@ -1,6 +1,6 @@
 """CMVS PB3B (type 1) 编解码。
 
-布局（详见 docs/engines/cmvs/file-formats.md）：
+布局（`cmvs-core/src/pb3.rs` 的 decode 分支，已与引擎核对）：
   +0   "PB3B"
   +8   ..+52 共 44 字节，加密后才是真实头部：
          plain[8+i] = (enc[8+i] ^ raw[len-3+i%2]) - raw[len-47+i]
@@ -15,11 +15,6 @@ flags 区每通道块：u32 分块标记字节数、u32 常量块数、u32 字�
 data 区每通道块：字面像素字节。位流 1=引用、0=字面，8 个 token 一个字节。
 
 编码策略：全部走「字面」，即分块标记全 0、常量块 0 个、位流全 0 字节。
-体积约为原图的 1.8 倍，换来的是「不写 LZSS 匹配器也能正确产出」；
-引擎不校验 checksum，所以这条路径可以安全使用。
-
-只实现 type 1。type 2/3 为 JBP1 差分编码、type 5 为预测器+累加、
-type 6 为外部底图引用，见文档。
 """
 from __future__ import annotations
 
@@ -136,7 +131,13 @@ def decode(raw: bytes):
 
 def encode(width: int, height: int, bpp: int, rgba: bytes, block: int = 16,
            field08: int = 0x01000000) -> bytes:
-    """把逐像素 RGBA（顶向下）编成 PB3B type 1，全字面编码。"""
+    """把逐像素 RGBA（顶向下）编成 PB3B type 1，全字面编码。
+
+    bpp 为 24 时只取前三个通道（原图本来就没有 alpha 语义）。
+    输入始终是 4 字节/像素的 RGBA，便于与解码端对称。
+    """
+    if bpp not in (24, 32):
+        raise ValueError("只支持 24 或 32 位深")
     channels = bpp // 8
     count = width * height
     if len(rgba) != count * 4:
@@ -144,10 +145,16 @@ def encode(width: int, height: int, bpp: int, rgba: bytes, block: int = 16,
     tiles = ((width + block - 1) // block) * ((height + block - 1) // block)
     flag_bytes = (tiles + 7) // 8
 
+    if len(rgba) != count * 4:
+        raise ValueError("输入必须是 4 字节/像素的 RGBA")
     planes = [bytearray(count) for _ in range(channels)]
     for i in range(count):
-        for channel in range(channels):
-            planes[channel][i] = rgba[i * 4 + channel]
+        base = i * 4
+        planes[0][i] = rgba[base]
+        planes[1][i] = rgba[base + 1]
+        planes[2][i] = rgba[base + 2]
+        if channels == 4:
+            planes[3][i] = rgba[base + 3]
 
     def tile_order(plane):
         """解码端按「分块优先、块内行优先」消费字面像素，编码必须同序。"""
