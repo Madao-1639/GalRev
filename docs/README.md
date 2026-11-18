@@ -43,6 +43,16 @@
 | [engines/krkr/hxv4-crypto.md](engines/krkr/hxv4-crypto.md) | 映射表帧与记录（`packed` 低位 = 条目下标）、**DJB 布局 AEAD**、DRIP VM 与四层 XOR 过滤器、参数清单与获取流程、判据与不变量 |
 | [engines/krkr/engine-mechanics.md](engines/krkr/engine-mechanics.md) | 引擎身份/指纹、执行层分工、**归档注册顺序与明文 xp3 覆盖**、语言域、字体重定向与子集判据、**UI 资源的 `_<tag>` 变体**、移植操作顺序 |
 
+## CMVS 引擎卷（Purple SOFTWARE）
+
+入口：[engines/cmvs/README.md](engines/cmvs/README.md)（引擎概述 + 新项目快速通道 + 跨作需重验清单）。
+
+| 文档 | 内容 |
+|---|---|
+| [engines/cmvs/file-formats.md](engines/cmvs/file-formats.md) | PS2A 脚本容器（头部 11 字段 / 字节变换 / 2048 环形窗口 LZSS / 文本段）、PB3B 图像容器（六种 codec / **头部自加密依赖文件尾** / 分块优先像素序）、CPZ 封包边界 |
+| [engines/cmvs/engine-mechanics.md](engines/cmvs/engine-mechanics.md) | **资源查找槽位（外挂覆盖的根本机制）**、系统命令分发表、代理 DLL 注入形态与 DllMain 陷阱、内存写入纪律、随包字体三条硬性要求、**改默认值而非拦截读取** |
+| [engines/cmvs/text-rendering.md](engines/cmvs/text-rendering.md) | 文本渲染链路（字节合成码位 → charset → `GetGlyphOutlineA`）、换编码必做的三件事、**双字节判定的两支汇编形态**、**标点禁则码位与偏移陷阱**、排版宽度、标题栏 |
+
 ## 跨引擎卷（Willplus → AdvHD）
 
 | 文档 | 内容 |
@@ -60,7 +70,7 @@
 
 ## 配套代码与数据
 
-- `galrev/advhd/`、`galrev/willplus/`、`galrev/krkr/`、`galrev/convert/`：与上述文档一一对应的通用库（纯标准库，游戏专属标定值全部为调用方参数）。
+- `galrev/advhd/`、`galrev/willplus/`、`galrev/krkr/`、`galrev/cmvs/`、`galrev/convert/`：与上述文档一一对应的通用库（纯标准库，游戏专属标定值全部为调用方参数）。
 - `data/ws2_operand_formats.json`：AdvHD WS2 全部 164 个 opcode 的操作数格式表。
 - `data/wsc_handlers.json`：Willplus WillAdv VM 全部 256 项 opcode handler 表。
 
@@ -69,4 +79,5 @@
 - **新遇到一台 AdvHD 引擎游戏**：advhd/README → methodology → file-formats → ws2-opcodes，随后按需（图像走 pna，存档走 save-system，汉化走 localization，成就走 steam-achievements）。
 - **把原版内容移植到 AdvHD Steam 版**：先各自读完两个引擎卷的 README 与 file-formats，再读 cross-engine/wsc-to-ws2，转换器直接用 `galrev/convert/wsc2ws2.py`。
 - **新遇到一台 krkr（KiriKiri Z + MDF 脚本）游戏**：krkr/README → methodology → file-formats → script-text；归档加密走 hxv4-crypto，补丁形态与语言域走 engine-mechanics。
+- **新遇到一台 CMVS（Purple SOFTWARE）游戏**：cmvs/README → methodology → file-formats → engine-mechanics（先确认覆盖槽位），要换文本编码再读 text-rendering。
 - **只想解包看内容**：methodology → 对应引擎卷 file-formats，配 `galrev` 对应子包即可。
