@@ -12,7 +12,7 @@
 - ttfnames:   TTF/OTF `name` 表最小读取（族名核对：Lua 请求名 vs 字体内部名）
 - langpack:   语言包（≥1.9）：注册表选择（值名=安装路径的 ANSI 转换）、包发现、按成员覆盖视图
 - langdll:    语言包 DLL（`AdvHDLang.dll`）：资源树重建（windres）、32 位编译、`LoadStringW` 校验
-- luac53:     定制 Lua 5.3 字节码 undump（字符串长度 1 字节、opcode 索引 9 多一项）
+- luac53:     定制 Lua 5.3 字节码读写（undump / dump；字符串长度 1 字节、lua_Integer 8 字节、opcode 索引 9 多一项）
 - luadis53:   定制 Lua 5.3 反汇编器（fields / Dis / dump）
 - saveadv:    CCST 存档快照链只读解析（块结构、字符串扫描、环序）
 - savegen:    指定位置存档生成（改写第 0 块 PC 字段；写盘类操作需调用方显式给路径）

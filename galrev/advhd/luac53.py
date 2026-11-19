@@ -1,8 +1,12 @@
-"""Lua 5.3 bytecode reader (undump).
+"""定制 Lua 5.3 字节码读写（undump / dump）。
 
-`Script.arc` 里的 *.lua 成员是 Lua 5.3 编译产物（签名 `\\x1bLuaS`），不是混淆 ——
-之前"解不出"是因为它是字节码而非源码文本。本模块按 lundump.c 的结构读出 Proto 树，
+`Script.arc` 里的 *.lua 成员是 Lua 5.3 编译产物（签名 `\x1bLuaS`），不是混淆 ——
+"解不出"是因为它是字节码而非源码文本。本模块按 lundump.c 的结构读出 Proto 树，
 用于提取字符串常量、定位系统界面文本。
+
+`dump()` 是 `load()` 的逆：按同一字段顺序重新序列化。**它只保证「不改指令、只换
+常量」这一种用途** —— 指令编码、调试信息、upvalue 全部原样保留，因此产物与原文的
+差异精确等于被替换的常量。判据是往返：`dump(load(x)) == x` 逐字节成立。
 
 **与上游 Lua 5.3 的差异（实测得出，见 docs/engines/advhd/file-formats.md）**：
 
@@ -10,12 +14,17 @@
 |---|---|---|
 | 主 chunk 前置字节 | `sizeupvalues`（1 字节） | 同 |
 | 字符串长度 `LoadSize` | `sizeof(size_t)` = 4 字节 | **1 字节** |
+| `lua_Integer` 宽度 | 4 字节 | **8 字节** |
 | 计数 `LoadInt` | `sizeof(int)` = 4 字节 | 同 |
 
 字符串长度 1 字节这一点是穷举验证的：把 (前置字节数, 字符串长度宽度, 计数宽度,
 行号宽度) 的全部组合跑一遍，只有 (1, 1, 4, 4) 能让归档的全部 .lua 成员
 **逐个精确消耗到文件末尾**，且提取出的字符串全部可读。全部成员同时自洽
 也反证了语料里没有字符串长度 ≥ 256（否则必然错位）。
+
+⚠️ **`lua_Integer` 是 8 字节而不是上游常见的 4**：写成 4 会让 `LUAC_INT` 字段少
+4 字节、其后整段错位。`dump()` 的缺省 `sizes` 已按实测值给出；换游戏若往返不一致，
+先核这一项。
 """
 import struct
 
@@ -190,3 +199,82 @@ def load(blob):
         raise LuaFormatError('%d trailing bytes after top-level function'
                              % (len(blob) - r.pos))
     return top
+
+
+# ---------------------------------------------------------------------------
+# 写回（undump 的逆）：dump 格式已由 `load()` 逐字段确定，因此按同一顺序重新
+# 序列化即可。**只换常量、不改指令**是本函数唯一的用途。
+# ---------------------------------------------------------------------------
+
+def _dump_string(value):
+    """`load_string` 的逆：1 字节长度 = `len + 1`（长度**含**结尾 NUL 计数，但
+    **不写出** NUL —— lundump 的 `DumpString` 就是 `DumpByte(size+1); DumpVector(str, size)`），
+    None → 0x00。"""
+    if value is None:
+        return b'\x00'
+    if not isinstance(value, (bytes, bytearray)):
+        raise LuaFormatError('string constant must be bytes, got %r' % type(value))
+    if len(value) + 1 >= 0xFF:
+        raise LuaFormatError('string too long for the 1-byte length field: %d' % len(value))
+    return bytes((len(value) + 1,)) + bytes(value)
+
+
+def _dump_proto(f, sizes):
+    out = bytearray()
+    out += _dump_string(f.source)
+    out += f.line_defined.to_bytes(sizes['int'], 'little')
+    out += f.last_line_defined.to_bytes(sizes['int'], 'little')
+    out += bytes((f.num_params, f.is_vararg, f.max_stack_size))
+    out += len(f.code).to_bytes(sizes['int'], 'little')
+    for w in f.code:
+        out += w.to_bytes(4, 'little')
+    out += len(f.constants).to_bytes(sizes['int'], 'little')
+    for tag, value in f.constants:
+        out.append(tag)
+        if tag == T_NIL:
+            pass
+        elif tag == T_BOOLEAN:
+            out.append(1 if value else 0)
+        elif tag == T_NUMFLT:
+            out += struct.pack('<d', value)
+        elif tag == T_NUMINT:
+            out += int(value).to_bytes(sizes['lua_Integer'], 'little', signed=True)
+        elif tag in STR_TAGS:
+            out += _dump_string(value)
+        else:
+            raise LuaFormatError('bad constant tag %d' % tag)
+    out += len(f.upvalues).to_bytes(sizes['int'], 'little')
+    for instack, idx in f.upvalues:
+        out += bytes((instack, idx))
+    out += len(f.protos).to_bytes(sizes['int'], 'little')
+    for p in f.protos:
+        out += _dump_proto(p, sizes)
+    out += len(f.lineinfo).to_bytes(sizes['int'], 'little')
+    out += bytes(f.lineinfo)
+    out += len(f.locvars).to_bytes(sizes['int'], 'little')
+    for name, startpc, endpc in f.locvars:
+        out += _dump_string(name)
+        out += startpc.to_bytes(sizes['int'], 'little')
+        out += endpc.to_bytes(sizes['int'], 'little')
+    out += len(f.upvalue_names).to_bytes(sizes['int'], 'little')
+    for name in f.upvalue_names:
+        out += _dump_string(name)
+    return bytes(out)
+
+
+def dump(top, sizes=None):
+    """把 `load()` 的产物写回字节码。`sizes` 缺省用本引擎实测值 (1, 4, 4, 4, 8)。"""
+    # 本引擎实测值（同一归档的全部成员头一致）：int/size_t/Instruction = 4，
+    # **lua_Integer = 8**（写成 4 会让 LUAC_INT 字段少 4 字节，整段错位）
+    sizes = sizes or {'int': 4, 'size_t': 4, 'Instruction': 4,
+                      'lua_Integer': 8, 'lua_Number': 8}
+    out = bytearray(SIGNATURE)
+    out += bytes((0x53, 0))
+    out += b'\x19\x93\r\n\x1a\n'
+    out += bytes((sizes['int'], sizes['size_t'], sizes['Instruction'],
+                  sizes['lua_Integer'], sizes['lua_Number']))
+    out += (0x5678).to_bytes(sizes['lua_Integer'], 'little', signed=True)
+    out += struct.pack('<d', 370.5)
+    out.append(1)                               # sizeupvalues
+    out += _dump_proto(top, sizes)
+    return bytes(out)

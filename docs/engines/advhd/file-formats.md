@@ -125,7 +125,19 @@ LNG 是 AdvHD 的文本替换机制，每个含文本的 `.ws2` 对应一个同�
 
 `LegacyGame.inc` 是纯文本的 include 清单（CRLF，每行 `include "xxx"`），决定实际加载哪些成员；`LegacyGame.lua` 不在清单里，是死代码（原版即如此）。
 
-工具：`galrev.advhd.luac53`（解析）/ `galrev.advhd.luadis53`（反汇编，`--archive` 显式给归档路径）。
+工具：`galrev.advhd.luac53`（`load()` 解析 / `dump()` 写回）/ `galrev.advhd.luadis53`（反汇编，`--archive` 显式给归档路径）。
+
+**写回（`dump()`）只用于「不改指令、只换常量」**：字节码里要改语言开关、字体族名、界面文案这类字符串/布尔常量时，改常量表再重序列化，比按字节偏移打补丁可靠 —— 常量可能被多处引用，长度还会变。指令编码、行号、upvalue、调试信息全部原样保留 ⇒ 产物与原文的差异精确等于被替换的常量：
+
+```python
+top = luac53.load(member)                     # Proto 树
+for f in top.walk():
+    for i, (tag, v) in enumerate(f.constants):
+        if v == b'old': f.constants[i] = (tag, b'new')
+new_member = luac53.dump(top)                 # 缺省 sizes 已按本引擎实测值
+```
+
+**判据是往返**：`dump(load(x)) == x` 必须逐字节成立（本引擎实测 13/13 个 Lua 成员通过）。能解析**不**证明能重序列化 —— 若往返不一致，先核 `lua_Integer` 宽度（本引擎 8 字节，官方常见 4，差 4 字节会让其后整段错位）。
 
 ### 明文 Lua 可直接加载 ★
 
