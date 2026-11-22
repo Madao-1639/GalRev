@@ -23,10 +23,10 @@ AdvHD.exe 是 MoeNovel 的 Amaneko 系视觉小说引擎，WillPlus 新引擎，
 |---|---|
 | [file-formats.md](file-formats.md) | Arc / WS2 / LNG / 定制 Lua 5.3 / NameTable.txt / **PTF 字体**（容器格式 + 纯字面量 LZSS 打包） |
 | [ws2-opcodes.md](ws2-opcodes.md) | WS2 指令集：类型码、164 opcode 格式表、函数名对照、关键指令语义、字节模态结论 |
-| [engine-mechanics.md](engine-mechanics.md) | 脚本 VM 结构、LAYER_ORDER 槽位机制、ev 槽 7 字节限制、**文字渲染路径（字体装载 + backlog 膨胀边）**、文本编码路径、**语言包（目录 / 按成员覆盖 / 注册表选择 / Lua 开关 / DLL 载体）**、**归档解析四级链与可扩展槽位（`patch{n}.arc`）** |
+| [engine-mechanics.md](engine-mechanics.md) | 脚本 VM 结构、LAYER_ORDER 槽位机制、ev 槽 7 字节限制、**文字渲染路径（字体装载 + backlog 膨胀边）**、文本编码路径、**语言包（目录 / 按成员覆盖 / 注册表选择 / Lua 开关 / DLL 载体）**、**归档解析四级链与可扩展槽位（`patch{n}.arc`）**、**CG 画廊（CgBrowser）：引擎不参与判定、只管取图** |
 | [pna.md](pna.md) | PNA 分层图像二进制布局、layer_id 机制、写回不变量、图片比对口径 |
 | [save-system.md](save-system.md) | CCST 存档块结构、PC 字段、MessageFlag.dat、指定位置存档生成 |
-| [steam-achievements.md](steam-achievements.md) | Steam 成就机制与安全注入的工程要求 |
+| [steam-achievements.md](steam-achievements.md) | Steam 成就机制与安全注入的工程要求；**`0x0b` id 对的双重语义（成就 id ∧ 画廊解锁位）与跨版本编号归属判据** |
 | [localization.md](localization.md) | 汉化通路：lng 位置对应、NameTable、语音通道、字体（PTF 自制 / 族名接线 / 简中 Charset）、注入工程注意事项、**不走 lng 的文本（码页 hook / opcode 位置门）** |
 | [branching-and-variants.md](branching-and-variants.md) | 条件分支与变体路由：变量存储（`0b` 布尔 / `09` 浮点）与 `01` 比较路径、**布尔旗标陷阱**、选项帧 / 跨脚本变量路由的字节模板与偏移纪律、自检与实机验收 |
 
@@ -47,3 +47,4 @@ AdvHD.exe 是 MoeNovel 的 Amaneko 系视觉小说引擎，WillPlus 新引擎，
    现成工具：`galrev.advhd.ws2.check_tail_counts()`（逐脚本自查）与 `set_tail_counts()`。
 6. **读脚本 VM**：需要逆向引擎时，先找明文的同引擎 exe 定位 handler 表（`obj+0x1B18` 附近）与操作数格式表，再回本作 exe（必要时脱壳）核对编号；方法与地址见 [engine-mechanics.md](engine-mechanics.md)。
 7. **方法论红线**：同引擎样本只用于提出假设，本作自身样本才用于定案；凡涉及字节增删的补丁，绝对偏移重定位与边界自检（[steam-achievements.md](steam-achievements.md) 的四条强不变式）不可省略。
+8. **画廊类功能单独验收**：画廊表（`openCgBrowser` 记录）与素材归档是两份独立交付物，可各自完整而交叉不一致。删减/新增内容的补丁要**成对核对**表与归档，并先用脚本常量确定**可达页/格范围**再统计影响面；症状（空格子 / 点开后报错 / 切不动）只会在引擎取图时暴露，而引擎不报错，见 [engine-mechanics.md](engine-mechanics.md)「CG 画廊」。
